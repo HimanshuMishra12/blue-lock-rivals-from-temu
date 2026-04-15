@@ -1560,11 +1560,14 @@ function stopAutoGK(msg){
 // CHAR SELECT
 // ═══════════════════════════════════════
 let gameMode='ai',cphase=0,p1Id='igaguri',p2Id='igaguri';
-function goCharSel(mode){ gameMode=mode; cphase=0; p1Id=unlocked[0]||'igaguri'; p2Id=unlocked[0]||'igaguri'; buildCSel(); showS('s-csel'); }
+
 function buildCSel(){
+  const isOnlineGuest=gameMode==='online_guest';
   const p2=(gameMode==='friend'&&cphase===1);
-  document.getElementById('csel-title').textContent=p2?'PLAYER 2 SELECT':'SELECT YOUR EGOIST';
-  document.getElementById('csel-sub').textContent=p2?'P2 uses WASD':'P1 uses Arrow Keys';
+  const title=isOnlineGuest?'PICK YOUR CHARACTER':p2?'PLAYER 2 SELECT':'SELECT YOUR EGOIST';
+  const sub=isOnlineGuest?'Pick your character for the online match':p2?'P2 uses WASD':'P1 uses Arrow Keys';
+  document.getElementById('csel-title').textContent=title;
+  document.getElementById('csel-sub').textContent=sub;
   const cur=p2?p2Id:p1Id;
   const g=document.getElementById('csel-grid'); g.innerHTML='';
   CHARS.forEach(c=>{
@@ -1576,16 +1579,27 @@ function buildCSel(){
     card.innerHTML=`<div class="cc-rar" style="background:${r.col}22;color:${r.col}">${r.n}</div>
       <div class="cc-num">${c.num}</div><div class="cc-name">${nel_has(c.id)&&!lk?'NEL-':''}${c.name}</div>
       <div class="cc-focus">${c.focus}</div><div class="cc-sbar">${bars}</div>`;
-    if(!lk) card.onclick=()=>{ if(cphase===0)p1Id=c.id; else p2Id=c.id; document.querySelectorAll('.cc').forEach(x=>x.classList.remove('sel')); card.classList.add('sel'); };
+    if(!lk) card.onclick=()=>{ if(cphase===0||isOnlineGuest)p1Id=c.id; else p2Id=c.id; document.querySelectorAll('.cc').forEach(x=>x.classList.remove('sel')); card.classList.add('sel'); };
     g.appendChild(card);
   });
-  document.getElementById('csel-btn').textContent=(gameMode==='friend'&&cphase===0)?'NEXT →':'KICK OFF ⚽';
+  const btnText=isOnlineGuest?'CONFIRM CHARACTER ✓':(gameMode==='friend'&&cphase===0)?'NEXT →':'KICK OFF ⚽';
+  document.getElementById('csel-btn').textContent=btnText;
+}
+function goCharSel(mode){
+  gameMode=mode; cphase=0;
+  p1Id=unlocked[0]||'igaguri'; p2Id=unlocked[0]||'igaguri';
+  buildCSel(); showS('s-csel');
 }
 function cselConfirm(){
   if(gameMode==='friend'&&cphase===0){cphase=1;buildCSel();return;}
+  // Online guest — confirm char and notify host
+  if(gameMode==='online_guest'){
+    document.getElementById('csel-btn').textContent='CONFIRMING...';
+    confirmOnlineGuestChar();
+    return;
+  }
   let aiId;
   if(gameMode==='ai'){
-    // AI matches player rarity
     const pChar=charById(p1Id); const pRar=pChar.rarity;
     const sameRarPool=SPIN_POOL[pRar]||CHARS;
     aiId=sameRarPool[Math.floor(Math.random()*sameRarPool.length)].id;
@@ -2732,6 +2746,7 @@ function goHomeEnd(){ gRunning=false; showTouchHUD(false); showS('s-home'); if(c
     measurementId: "G-CE776PM4D4"
   };
 
+
 let db = null;
 let fbReady = false;
 let presenceRef = null;
@@ -2974,46 +2989,88 @@ function listenTransfers(){
 }
 
 // ── Online Multiplayer ─────────────────────────────────────────────────────
+// ── ONLINE MULTIPLAYER — clean rewrite ────────────────────────────────────────
+
+// Step 1: Host picks their char via normal char select, then presses PLAY on friend
+// inviteToGame is called AFTER p1Id is set (from char select)
 async function inviteToGame(friend){
-  if(!fbReady) return;
-  const gameId = currentUser+'_'+friend+'_'+Date.now();
-  await db.ref('gameInvites/'+friend+'/'+currentUser).set({ gameId, from:currentUser, status:'pending', timestamp:Date.now() });
-  showDailyToast('📨 Invite sent to '+friend+'!', false);
-  // Wait for acceptance
+  if(!fbReady){ showDailyToast('Firebase not ready',true); return; }
+  // Must have selected a character first
+  if(!p1Id){ showDailyToast('Select your character first!',true); return; }
+
+  // Clear any stale old invite
+  await db.ref('gameInvites/'+friend+'/'+currentUser).remove();
+
+  const gameId = currentUser+'_'+Date.now();
+  const inviteData = {
+    gameId, from:currentUser, fromChar:p1Id,
+    status:'pending', timestamp:Date.now()
+  };
+  await db.ref('gameInvites/'+friend+'/'+currentUser).set(inviteData);
+  showDailyToast('📨 Invite sent to '+friend+'! Waiting...', false);
+
+  // Listen for response
   const invRef = db.ref('gameInvites/'+friend+'/'+currentUser);
-  invRef.on('value', snap=>{
+  const unsub = invRef.on('value', snap=>{
     const d = snap.val();
-    if(!d) return;
-    if(d.status==='accepted'){
-      invRef.off(); invRef.remove();
-      // Start game as host
-      startOnlineGame(gameId, friend, 'host');
+    if(!d) return; // was removed/declined
+    if(d.status==='accepted' && d.guestChar){
+      invRef.off('value', unsub);
+      invRef.remove();
+      showDailyToast('✦ '+friend+' accepted! Starting...', false);
+      setTimeout(()=> launchOnlineGame(gameId, p1Id, d.guestChar, 'host'), 800);
     } else if(d.status==='declined'){
-      invRef.off(); invRef.remove();
-      showDailyToast('❌ '+friend+' declined.', true);
+      invRef.off('value', unsub);
+      invRef.remove();
+      showDailyToast('❌ '+friend+' declined the invite.', true);
     }
   });
+
+  // Auto-cancel after 60 seconds
+  setTimeout(()=>{
+    invRef.off('value', unsub);
+    invRef.remove();
+  }, 60000);
 }
 
-// Listen for game invites
+// Step 2: Guest receives invite popup
 function listenGameInvites(){
   if(!fbReady||!currentUser) return;
-  if(inviteListener) return;
-  const ref = db.ref('gameInvites/'+currentUser);
-  inviteListener = ref.on('child_added', snap=>{
-    const d = snap.val(); if(!d||d.status!=='pending') return;
-    pendingInvite = { from:d.from, gameId:d.gameId, ref:snap.ref };
-    document.getElementById('invite-msg').textContent=d.from+' wants to play with you!';
+  // Clean up old listener
+  if(inviteListener){
+    db.ref('gameInvites/'+currentUser).off('child_added', inviteListener);
+    inviteListener = null;
+  }
+
+  // Use timestamp to only catch NEW invites (not old ones on load)
+  const nowTs = Date.now();
+  inviteListener = db.ref('gameInvites/'+currentUser).on('child_added', snap=>{
+    const d = snap.val();
+    if(!d || d.status !== 'pending') return;
+    if(d.timestamp < nowTs - 5000) { snap.ref.remove(); return; } // too old
+    pendingInvite = { from:d.from, fromChar:d.fromChar, gameId:d.gameId, ref:snap.ref };
+    document.getElementById('invite-msg').textContent=
+      d.from+' is challenging you to a match!';
     document.getElementById('invite-modal').classList.add('on');
   });
 }
 
+// Step 3: Guest accepts — picks char, then confirms
 async function acceptGameInvite(){
   if(!pendingInvite) return;
   document.getElementById('invite-modal').classList.remove('on');
-  await pendingInvite.ref.update({ status:'accepted' });
-  startOnlineGame(pendingInvite.gameId, pendingInvite.from, 'guest');
-  pendingInvite=null;
+
+  // Guest must pick a character — go to char select
+  const inv = pendingInvite;
+  pendingInvite = null;
+  gameMode='online_guest';
+  p1Id = unlocked[0]||'igaguri'; // default, will update in goCharSel
+
+  // Show char select for guest to pick their char
+  goCharSel('online_guest');
+
+  // Override the confirm button to launch online game
+  window._onlineGuestInvite = inv;
 }
 
 async function declineGameInvite(){
@@ -3023,86 +3080,111 @@ async function declineGameInvite(){
   pendingInvite=null;
 }
 
-function startOnlineGame(gameId, opponent, role){
-  onlineGameId=gameId; onlineRole=role;
-  const myChar = p1Id||'igaguri';
-  const oppChar = role==='host'?'igaguri':myChar; // host picks AI char initially
-  gameMode='online_'+role;
-  showDailyToast(role==='host'?'⚽ HOSTING...':'⚽ JOINING...', false);
-  // Write initial game state
-  if(role==='host'){
-    db.ref('games/'+gameId).set({ host:currentUser, guest:opponent, hostChar:myChar, guestChar:'igaguri', status:'waiting' });
-    db.ref('games/'+gameId+'/guestChar').on('value', snap=>{
-      if(snap.val()&&snap.val()!=='igaguri'){
-        db.ref('games/'+gameId+'/status').set('playing');
-        initGame(myChar, snap.val());
-        startOnlineSync();
-      }
-    });
-  } else {
-    db.ref('games/'+gameId+'/hostChar').once('value', snap=>{
-      const hc = snap.val()||'igaguri';
-      db.ref('games/'+gameId+'/guestChar').set(myChar);
-      // Wait for status=playing
-      db.ref('games/'+gameId+'/status').on('value', sSnap=>{
-        if(sSnap.val()==='playing'){
-          db.ref('games/'+gameId+'/status').off();
-          initGame(myChar, hc);
-          startOnlineSync();
-        }
-      });
-    });
-  }
+// Called when guest confirms character selection for online game
+async function confirmOnlineGuestChar(){
+  const inv = window._onlineGuestInvite;
+  if(!inv) return;
+  window._onlineGuestInvite = null;
+  // Tell host our char and accept
+  await inv.ref.update({ status:'accepted', guestChar:p1Id });
+  setTimeout(()=> launchOnlineGame(inv.gameId, p1Id, inv.fromChar, 'guest'), 800);
 }
 
+// Step 4: Both sides launch the game
+function launchOnlineGame(gameId, myChar, oppChar, role){
+  onlineGameId = gameId;
+  onlineRole = role;
+  gameMode = 'online_'+role;
+  showDailyToast(role==='host'?'⚽ GAME STARTING — you are HOST':'⚽ GAME STARTING — you are GUEST', false);
+  // Host plays left side (P), guest plays right side (A)
+  // In initGame, P is always left, A is right
+  // Host char = P, Guest char = A
+  setTimeout(()=>{
+    initGame(myChar, oppChar);
+    setTimeout(startOnlineSync, 500);
+  }, 1000);
+}
+
+// Step 5: Bidirectional sync
 function startOnlineSync(){
-  if(!onlineGameId) return;
+  if(!onlineGameId||!gRunning) return;
+  console.log('Online sync starting as', onlineRole);
+
   if(onlineRole==='host'){
-    // Host: write game state every 50ms
-    onlineSyncTimer=setInterval(()=>{
-      if(!gRunning) return;
-      db.ref('games/'+onlineGameId+'/state').set({
-        px:Math.round(P.x), py:Math.round(P.y),
-        ax:Math.round(A.x), ay:Math.round(A.y),
-        bx:Math.round(Ball.x), by:Math.round(Ball.y),
-        sp:score.p, sa:score.a, t:Math.round(gameTime*10)/10
-      });
-      // Read guest input
+    // Host owns the game simulation — writes full state, reads guest inputs
+    onlineSyncTimer = setInterval(()=>{
+      if(!gRunning){ stopOnlineSync(); return; }
+      // Write game state
+      try{
+        db.ref('games/'+onlineGameId+'/state').set({
+          px:Math.round(P.x), py:Math.round(P.y),
+          ax:Math.round(A.x), ay:Math.round(A.y),
+          bx:Math.round(Ball.x), by:Math.round(Ball.y),
+          bvx:Math.round(Ball.vx*10)/10,
+          bvy:Math.round(Ball.vy*10)/10,
+          sp:score.p, sa:score.a,
+          t:Math.round(gameTime*10)/10,
+          ts:Date.now()
+        });
+      } catch(e){}
+      // Read and apply guest inputs
       db.ref('games/'+onlineGameId+'/guestInput').once('value', snap=>{
-        const inp = snap.val(); if(!inp) return;
-        A.vx=inp.vx||0; A.vy=inp.vy||0;
-        if(inp.shoot) doShoot(A);
-        if(inp.q) doMove(A,0); if(inp.e) doMove(A,1); if(inp.r) doMove(A,2);
+        const inp = snap.val(); if(!inp||!gRunning) return;
+        // Apply guest movement to A
+        if(typeof inp.vx==='number') A.vx=inp.vx;
+        if(typeof inp.vy==='number') A.vy=inp.vy;
+        if(typeof inp.fx==='number') A.fx=inp.fx;
+        if(typeof inp.fy==='number') A.fy=inp.fy;
+        if(inp.shoot&&A.hasBall) doShoot(A);
+        if(inp.q) doMove(A,0);
+        if(inp.e) doMove(A,1);
+        if(inp.r) doMove(A,2);
+        if(inp.t) doMove(A,3);
         if(inp.steal) doStealKey(A,P);
         if(inp.awk) doAwaken(A);
       });
-    },50);
+    }, 50);
+
   } else {
-    // Guest: read game state and write input
+    // Guest reads game state from host and writes their own inputs
     db.ref('games/'+onlineGameId+'/state').on('value', snap=>{
       const s = snap.val(); if(!s||!gRunning) return;
-      // Apply host state to game
-      A.x=s.px; A.y=s.py; // in guest view, host=opponent
-      P.x=s.ax; P.y=s.ay;
-      Ball.x=s.bx; Ball.y=s.by;
-      score.a=s.sp; score.p=s.sa; gameTime=s.t;
+      // Host's P = our A (opponent), Host's A = our P (us)
+      // But wait — the HOST's P is HOST's player, A is guest
+      // So from guest view: opponent=host.P, me=host.A
+      if(typeof s.px==='number'){ A.x=s.px; A.y=s.py; }
+      if(typeof s.ax==='number'){ P.x=s.ax; P.y=s.ay; }
+      if(typeof s.bx==='number'){ Ball.x=s.bx; Ball.y=s.by; Ball.vx=s.bvx||0; Ball.vy=s.bvy||0; }
+      score.a=s.sp; score.p=s.sa; gameTime=Math.max(0,s.t);
     });
-    onlineSyncTimer=setInterval(()=>{
-      if(!gRunning) return;
-      const inp={
-        vx:P.vx, vy:P.vy,
-        shoot:K[' ']||false, q:K['q']||false, e:K['e']||false, r:K['r']||false,
-        steal:K['f']||false, awk:K['g']||false
+
+    // Guest writes inputs
+    onlineSyncTimer = setInterval(()=>{
+      if(!gRunning){ stopOnlineSync(); return; }
+      const inp = {
+        vx: Math.round((P.vx||0)*10)/10,
+        vy: Math.round((P.vy||0)*10)/10,
+        fx: P.fx||0, fy: P.fy||0,
+        shoot: K[' ']||false,
+        q:K['q']||false, e:K['e']||false,
+        r:K['r']||false, t:K['t']||false,
+        steal:K['f']||false, awk:K['g']||false,
+        ts:Date.now()
       };
-      if(touchMode){ inp.vx=joyDX*(effSpd(P)||5); inp.vy=joyDY*(effSpd(P)||5); }
-      db.ref('games/'+onlineGameId+'/guestInput').set(inp);
-    },50);
+      if(touchMode&&typeof joyDX!=='undefined'){
+        inp.vx = Math.round(joyDX*(effSpd(P)||5)*10)/10;
+        inp.vy = Math.round(joyDY*(effSpd(P)||5)*10)/10;
+      }
+      try{ db.ref('games/'+onlineGameId+'/guestInput').set(inp); } catch(e){}
+    }, 50);
   }
 }
 
 function stopOnlineSync(){
   if(onlineSyncTimer){ clearInterval(onlineSyncTimer); onlineSyncTimer=null; }
-  if(onlineGameId) db.ref('games/'+onlineGameId).remove();
+  try{
+    if(onlineGameId && onlineRole==='host') db.ref('games/'+onlineGameId).remove();
+  } catch(e){}
   onlineGameId=null; onlineRole=null;
 }
 
