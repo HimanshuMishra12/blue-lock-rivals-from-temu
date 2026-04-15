@@ -63,6 +63,30 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
 .flows-empty{font-size:14px;color:#334;text-align:center;padding:40px;letter-spacing:2px;}
 .flows-exit{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:5px;padding:10px 38px;background:transparent;border:2px solid #333;color:#666;cursor:pointer;margin-top:16px;transition:all .2s;border-radius:4px;}
 .flows-exit:hover{border-color:#fff;color:#fff;}
+/* TOUCH MODE */
+.touch-mode-pick{display:flex;gap:10px;margin-top:6px;width:100%;}
+.touch-mode-btn{flex:1;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:4px;padding:11px 0;cursor:pointer;border:2px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04);color:#556;border-radius:6px;transition:all .2s;}
+.touch-mode-btn.sel{background:rgba(0,170,255,.18);border-color:#00aaff;color:#00aaff;}
+.touch-mode-btn:hover:not(.sel){background:rgba(255,255,255,.07);color:#fff;}
+/* Touch HUD overlay */
+#touch-hud{display:none;position:fixed;inset:0;z-index:50;pointer-events:none;}
+#touch-hud.on{display:block;}
+/* Joystick */
+#joy-zone{position:absolute;bottom:30px;left:30px;width:160px;height:160px;pointer-events:all;}
+#joy-base{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.2);}
+#joy-knob{position:absolute;width:64px;height:64px;border-radius:50%;background:rgba(0,170,255,.55);border:2px solid #00aaff;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 18px #00aaff55;transition:box-shadow .1s;}
+/* Action buttons */
+#touch-btns{position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;pointer-events:all;}
+.touch-row{display:flex;gap:8px;justify-content:flex-end;}
+.tbtn{width:62px;height:62px;border-radius:50%;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;transition:transform .08s,opacity .08s;-webkit-tap-highlight-color:transparent;user-select:none;}
+.tbtn:active{transform:scale(.88);opacity:.7;}
+.tbtn-shoot{background:rgba(255,196,0,.8);color:#000;font-size:16px;}
+.tbtn-special{background:rgba(0,100,200,.7);color:#fff;font-size:11px;}
+.tbtn-steal{background:rgba(200,50,50,.7);color:#fff;font-size:11px;}
+.tbtn-awk{background:rgba(255,196,0,.6);color:#000;font-size:10px;border:2px solid #ffc400;}
+.tbtn-sm{width:50px;height:50px;font-size:10px;}
+#touch-awk-ind{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;}
+
 /* HOME */
 #s-home{flex-direction:column;background:#000;}
 #home-bg{position:absolute;inset:0;z-index:0;}
@@ -211,6 +235,13 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
       <input class="login-input" id="login-pass" type="password" placeholder="Your password..." autocomplete="off">
       <div class="login-err" id="login-err"></div>
       <button class="login-btn" onclick="doLogin()">⚡ ENTER THE EGO</button>
+      <div style="margin-top:8px;width:100%;">
+        <div class="login-lbl" style="margin-bottom:5px;">Control Mode</div>
+        <div class="touch-mode-pick">
+          <button class="touch-mode-btn sel" id="ctrl-keyboard" onclick="setCtrlMode('keyboard')">⌨️ KEYBOARD</button>
+          <button class="touch-mode-btn" id="ctrl-touch" onclick="setCtrlMode('touch')">👆 TOUCHSCREEN</button>
+        </div>
+      </div>
       <div class="login-hint">No account? Switch to Register above</div>
     </div>
     <!-- REGISTER PANEL -->
@@ -384,6 +415,35 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
 </div>
 
 <div id="daily-toast"></div>
+
+<!-- TOUCH HUD -->
+<div id="touch-hud">
+  <!-- Left: Joystick -->
+  <div id="joy-zone">
+    <div id="joy-base"></div>
+    <div id="joy-knob"></div>
+  </div>
+  <!-- Right: Buttons -->
+  <div id="touch-btns">
+    <!-- Top row: specials T Y (limited/bunny) -->
+    <div class="touch-row" id="touch-row-ty" style="display:none;">
+      <button class="tbtn tbtn-special tbtn-sm" ontouchstart="tDown('t')" ontouchend="tUp('t')"><span>T</span></button>
+      <button class="tbtn tbtn-special tbtn-sm" ontouchstart="tDown('y')" ontouchend="tUp('y')"><span>Y</span></button>
+    </div>
+    <!-- Specials row: Q E R -->
+    <div class="touch-row">
+      <button class="tbtn tbtn-special tbtn-sm" ontouchstart="tDown('q')" ontouchend="tUp('q')"><span>Q</span><span style="font-size:7px;opacity:.7;" id="tq-lbl"></span></button>
+      <button class="tbtn tbtn-special tbtn-sm" ontouchstart="tDown('e')" ontouchend="tUp('e')"><span>E</span><span style="font-size:7px;opacity:.7;" id="te-lbl"></span></button>
+      <button class="tbtn tbtn-special tbtn-sm" ontouchstart="tDown('r')" ontouchend="tUp('r')"><span>R</span><span style="font-size:7px;opacity:.7;" id="tr-lbl"></span></button>
+    </div>
+    <!-- Main row: steal, shoot, awaken -->
+    <div class="touch-row">
+      <button class="tbtn tbtn-steal" ontouchstart="tDown('f')" ontouchend="tUp('f')">🤚<span style="font-size:8px;">STEAL</span></button>
+      <button class="tbtn tbtn-shoot" ontouchstart="tDown(' ')" ontouchend="tUp(' ')">⚽<span style="font-size:10px;">SHOOT</span></button>
+      <button class="tbtn tbtn-awk" ontouchstart="tDown('g')" ontouchend="tUp('g')">⚡<span style="font-size:8px;">AWK</span></button>
+    </div>
+  </div>
+</div>
 
 <!-- GAMEOVER -->
 <div id="s-go" class="screen">
@@ -1494,6 +1554,8 @@ function initGame(p1id,aiid){
   buildHUD();
   resetEnts(true);
   lastTS=performance.now();
+  showTouchHUD(touchMode);
+  if(touchMode) setTimeout(updateTouchMoveLabels,500);
   requestAnimationFrame(gFrame);
 }
 
@@ -1617,7 +1679,7 @@ function doAwaken(ent){
   if(ent.awkUsed||ent.awkActive||!ent.awkReady) return;
   ent.awkUsed=true; ent.awkReady=false;
   document.getElementById('awk-indicator').classList.remove('show');
-  playAwkCutscene(ent,()=>{ ent.awkActive=true; ent.awkT=getAwkDur(ent)*60; ent.spd*=1.3; ent.pwr*=1.4; spawnBurst(ent.x,ent.y,ent.style.color); ntf('✦ '+ent.style.awk+' ✦',ent.style.color); });
+  playAwkCutscene(ent,()=>{ ent.awkActive=true; ent.awkT=getAwkDur(ent)*60; ent.spd*=1.3; ent.pwr*=1.4; spawnBurst(ent.x,ent.y,ent.style.color); ntf('✦ '+ent.style.awk+' ✦',ent.style.color); if(touchMode) setTimeout(updateTouchMoveLabels,100); });
 }
 
 function relBall(ent,vx,vy,cf){ Ball.vx=vx; Ball.vy=vy; Ball.curveF=cf; Ball.owner=null; Ball.shootCd=16; ent.hasBall=false; }
@@ -1674,7 +1736,10 @@ function updateEnt(ent,dt){
     ent.trail.push({x:ent.x,y:ent.y,life:18,col:ent.style.color});
   } else if(ent.isP1||(curMode==='friend'&&!ent.isP1)){
     let mx=0,my=0;
-    if(ent.isP1){ if(K['arrowup'])my=-1;if(K['arrowdown'])my=1;if(K['arrowleft'])mx=-1;if(K['arrowright'])mx=1; }
+    if(ent.isP1){
+      if(touchMode){ const t=getTouchInput(); mx=t.mx; my=t.my; }
+      else { if(K['arrowup'])my=-1;if(K['arrowdown'])my=1;if(K['arrowleft'])mx=-1;if(K['arrowright'])mx=1; }
+    }
     else { if(K['w'])my=-1;if(K['s'])my=1;if(K['a'])mx=-1;if(K['d'])mx=1; }
     if(mx||my){ const l=Math.sqrt(mx*mx+my*my); mx/=l; my/=l; ent.fx=mx; ent.fy=my; const sp=effSpd(ent); ent.vx=mx*sp; ent.vy=my*sp; } else { ent.vx*=0.76; ent.vy*=0.76; }
   }
@@ -2511,6 +2576,7 @@ function shakeGame(){ const e=document.getElementById('s-game');e.classList.add(
 // ═══════════════════════════════════════
 function endGame(){
   gRunning=false;
+  showTouchHUD(false);
   const {p,a}=score; const earned=p>a?70:p===a?15:0;
   addCoins(earned);
   showS('s-go');
@@ -2523,7 +2589,7 @@ function endGame(){
 }
 let curAIIdForReplay;
 function replayGame(){ curAIIdForReplay=curAIId; initGame(curP1Id,curAIId); }
-function goHomeEnd(){ gRunning=false; showS('s-home'); if(currentUser) document.getElementById('home-username').textContent=currentUser.toUpperCase(); updateHomeCoins(); }
+function goHomeEnd(){ gRunning=false; showTouchHUD(false); showS('s-home'); if(currentUser) document.getElementById('home-username').textContent=currentUser.toUpperCase(); updateHomeCoins(); }
 
 // ═══════════════════════════════════════
 // HOME ANIMATION
@@ -2541,6 +2607,88 @@ function goHomeEnd(){ gRunning=false; showS('s-home'); if(currentUser) document.
   }
   draw();
 })();
+
+// ═══════════════════════════════════════
+// TOUCH CONTROLS
+// ═══════════════════════════════════════
+let touchMode=false;
+let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
+const JOY_MAX=48;
+
+function setCtrlMode(mode){
+  touchMode=(mode==='touch');
+  localStorage.setItem('blr_ctrl_mode',mode);
+  document.getElementById('ctrl-keyboard').className='touch-mode-btn'+(touchMode?'':' sel');
+  document.getElementById('ctrl-touch').className='touch-mode-btn'+(touchMode?' sel':'');
+}
+
+function loadCtrlMode(){
+  const m=localStorage.getItem('blr_ctrl_mode')||'keyboard';
+  setCtrlMode(m);
+}
+
+function showTouchHUD(show){
+  const h=document.getElementById('touch-hud');
+  h.className=show?'on':'';
+  if(show) setupJoystick();
+}
+
+function updateTouchMoveLabels(){
+  if(!P||!P.style) return;
+  const moves=getMoves(P);
+  ['q','e','r'].forEach((k,i)=>{
+    const el=document.getElementById('t'+k+'-lbl');
+    if(el) el.textContent=moves[i]?moves[i].n.slice(0,6):'';
+  });
+  // Show T/Y row for limited (4 moves) and secret (5 moves)
+  const hasT=moves[3]!=null, hasY=moves[4]!=null;
+  const tyRow=document.getElementById('touch-row-ty');
+  if(tyRow) tyRow.style.display=(hasT||hasY)?'flex':'none';
+}
+
+function setupJoystick(){
+  const zone=document.getElementById('joy-zone');
+  const knob=document.getElementById('joy-knob');
+  if(!zone||!knob) return;
+
+  function getJoyPos(e){
+    const t=e.touches[0], r=zone.getBoundingClientRect();
+    return {x:t.clientX-r.left-r.width/2, y:t.clientY-r.top-r.height/2};
+  }
+
+  zone.ontouchstart=e=>{
+    e.preventDefault(); joyActive=true;
+    const p=getJoyPos(e); joyStartX=p.x; joyStartY=p.y;
+  };
+  zone.ontouchmove=e=>{
+    e.preventDefault(); if(!joyActive) return;
+    const p=getJoyPos(e);
+    let dx=p.x, dy=p.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>JOY_MAX){dx=dx/dist*JOY_MAX;dy=dy/dist*JOY_MAX;}
+    joyDX=dx/JOY_MAX; joyDY=dy/JOY_MAX;
+    knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  };
+  zone.ontouchend=e=>{
+    e.preventDefault(); joyActive=false; joyDX=0; joyDY=0;
+    knob.style.transform='translate(-50%,-50%)';
+  };
+  zone.ontouchcancel=zone.ontouchend;
+}
+
+// Inject joystick into player movement
+function getTouchInput(){
+  if(!touchMode||!joyActive) return {mx:0,my:0};
+  const DEAD=0.18;
+  return {
+    mx:Math.abs(joyDX)>DEAD?joyDX:0,
+    my:Math.abs(joyDY)>DEAD?joyDY:0
+  };
+}
+
+// Button tap handlers
+function tDown(k){ K[k]=true; if(gRunning&&!csRunning) onKey(k,{preventDefault:()=>{}}); }
+function tUp(k){ K[k]=false; }
 
 // ═══════════════════════════════════════
 // LOGIN
@@ -2859,6 +3007,7 @@ document.addEventListener('keydown',function(e){
   }
 })();
 
+loadCtrlMode();
 // Auth handles loading on login — no auto-load at init
 </script>
 </body>
