@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>BLUE LOCK RIVALS</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidden;width:100vw;height:100vh;user-select:none;}
@@ -87,6 +90,62 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
 .tbtn-sm{width:50px;height:50px;font-size:10px;}
 #touch-awk-ind{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;}
 
+/* FRIENDS & ONLINE */
+#s-friends{flex-direction:column;background:radial-gradient(ellipse at 50% 30%,#050a18,#000);overflow-y:auto;}
+.fr-wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-height:100vh;overflow-y:auto;padding:22px 0 30px;}
+.fr-title{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:9px;color:#00aaff;margin-bottom:4px;}
+.fr-add{display:flex;gap:8px;margin:10px 0 18px;width:460px;}
+.fr-add input{flex:1;background:rgba(255,255,255,.05);border:1.5px solid rgba(0,170,255,.25);border-radius:6px;padding:10px 16px;font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff;outline:none;}
+.fr-add input:focus{border-color:#00aaff;}
+.fr-add button{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;padding:10px 22px;background:#00aaff;color:#000;border:none;cursor:pointer;border-radius:6px;}
+.fr-add button:hover{background:#33ccff;}
+.fr-msg{font-size:12px;color:#ffc400;letter-spacing:2px;margin-bottom:10px;min-height:16px;}
+.fr-section{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:5px;color:#334;margin:12px 0 6px;width:460px;}
+.fr-list{width:460px;display:flex;flex-direction:column;gap:6px;}
+.fr-card{background:rgba(5,12,24,.95);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px;}
+.fr-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.fr-dot.online{background:#00ff88;box-shadow:0 0 8px #00ff88;}
+.fr-dot.offline{background:#334;}
+.fr-name{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:#fff;flex:1;}
+.fr-status{font-size:10px;letter-spacing:2px;color:#445;}
+.fr-actions{display:flex;gap:6px;}
+.fr-btn{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:2px;padding:5px 12px;border:none;cursor:pointer;border-radius:4px;transition:all .15s;}
+.fr-btn-play{background:#00aaff;color:#000;}
+.fr-btn-play:hover{background:#33ccff;}
+.fr-btn-coins{background:rgba(255,196,0,.2);color:#ffc400;border:1px solid rgba(255,196,0,.3);}
+.fr-btn-coins:hover{background:rgba(255,196,0,.35);}
+.fr-btn-del{background:rgba(255,50,50,.15);color:#ff4444;border:1px solid rgba(255,50,50,.2);}
+.fr-btn-del:hover{background:rgba(255,50,50,.3);}
+.fr-req-card{background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px;width:460px;}
+.fr-btn-acc{background:#00aa44;color:#fff;} .fr-btn-acc:hover{background:#00cc55;}
+.fr-btn-dec{background:#aa2200;color:#fff;} .fr-btn-dec:hover{background:#cc3300;}
+/* Transfer modal */
+#transfer-modal{display:none;position:fixed;inset:0;z-index:600;align-items:center;justify-content:center;background:rgba(0,0,0,.9);}
+#transfer-modal.on{display:flex;}
+.tm-box{background:#0a0a14;border:1px solid rgba(255,196,0,.3);border-radius:12px;padding:36px 48px;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:340px;}
+.tm-title{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:5px;color:#ffc400;}
+.tm-input{width:100%;background:rgba(255,255,255,.05);border:1.5px solid rgba(255,196,0,.25);border-radius:6px;padding:10px 14px;font-family:'Rajdhani',sans-serif;font-size:18px;color:#fff;outline:none;text-align:center;}
+.tm-input:focus{border-color:#ffc400;}
+.tm-msg{font-size:12px;color:#ffc400;letter-spacing:2px;min-height:16px;text-align:center;}
+.tm-btns{display:flex;gap:10px;width:100%;}
+.tm-send{flex:1;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:4px;padding:12px;background:#ffc400;color:#000;border:none;cursor:pointer;border-radius:6px;}
+.tm-send:hover{background:#ffdd44;}
+.tm-cancel{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:3px;padding:12px 20px;background:transparent;border:1px solid #333;color:#666;cursor:pointer;border-radius:6px;}
+.tm-cancel:hover{border-color:#fff;color:#fff;}
+/* Online invite modal */
+#invite-modal{display:none;position:fixed;inset:0;z-index:600;align-items:center;justify-content:center;background:rgba(0,0,0,.9);}
+#invite-modal.on{display:flex;}
+.inv-box{background:#0a0a14;border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:36px 48px;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:360px;text-align:center;}
+.inv-title{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:5px;color:#00aaff;}
+.inv-msg{font-size:13px;color:#778;letter-spacing:1px;line-height:1.6;}
+.inv-btn-acc{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:4px;padding:12px 0;width:100%;background:#00aaff;color:#000;border:none;cursor:pointer;border-radius:6px;}
+.inv-btn-acc:hover{background:#33ccff;}
+.inv-btn-dec{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:3px;padding:10px;width:100%;background:transparent;border:1px solid #333;color:#666;cursor:pointer;border-radius:6px;}
+.inv-btn-dec:hover{border-color:#ff4444;color:#ff4444;}
+/* Home friends indicator */
+#home-friends-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:300px;}
+.hf-dot{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:1px;color:#445;font-family:'Rajdhani',sans-serif;}
+.hf-dot .dot{width:7px;height:7px;border-radius:50%;}
 /* HOME */
 #s-home{flex-direction:column;background:#000;}
 #home-bg{position:absolute;inset:0;z-index:0;}
@@ -271,10 +330,14 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
     <div style="display:flex;flex-direction:column;gap:9px;align-items:center;margin-top:4px;">
       <button class="hbtn hbtn-b" onclick="goCharSel('ai')">⚡ PLAY vs AI</button>
       <button class="hbtn hbtn-o" onclick="goCharSel('friend')">👥 PLAY vs FRIEND</button>
-      <div style="display:flex;gap:8px;">
-        <button class="hbtn hbtn-g" onclick="openShop()" style="width:136px;">🛒 SHOP</button>
-        <button class="hbtn hbtn-b" onclick="openFlows()" style="width:136px;font-size:18px;letter-spacing:4px;">🌊 FLOWS</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;">
+        <button class="hbtn hbtn-g" onclick="openShop()" style="width:88px;font-size:15px;letter-spacing:2px;">🛒 SHOP</button>
+        <button class="hbtn hbtn-b" onclick="openFlows()" style="width:88px;font-size:15px;letter-spacing:2px;">🌊 FLOWS</button>
+        <button class="hbtn" onclick="openFriends()" style="width:88px;font-size:15px;letter-spacing:2px;background:linear-gradient(135deg,#00cc88,#00aaff);color:#000;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);">👥 SOCIAL</button>
       </div>
+      <div id="home-friends-bar"></div>
+      <button class="hbtn" id="daily-btn" onclick="claimDaily()" style="background:linear-gradient(135deg,#ff8800,#ffc400);color:#000;clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);">🎁 DAILY REWARD</button>
+      <div id="home-friends-bar"></div>
       <button class="hbtn" id="daily-btn" onclick="claimDaily()" style="background:linear-gradient(135deg,#ff8800,#ffc400);color:#000;clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);">🎁 DAILY REWARD</button>
     </div>
   </div>
@@ -288,6 +351,52 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
     <div class="csel-grid" id="csel-grid"></div>
     <button class="csel-btn" id="csel-btn" onclick="cselConfirm()">KICK OFF ⚽</button>
     <button class="csel-back" onclick="showS('s-home')">← HOME</button>
+  </div>
+</div>
+
+<!-- FRIENDS / SOCIAL -->
+<div id="s-friends" class="screen">
+  <div class="fr-wrap">
+    <div class="fr-title">👥 SOCIAL</div>
+    <div class="fr-add">
+      <input id="fr-input" type="text" placeholder="Enter username..." autocomplete="off" spellcheck="false" maxlength="20">
+      <button onclick="sendFriendRequest()">ADD FRIEND</button>
+    </div>
+    <div class="fr-msg" id="fr-msg"></div>
+    <!-- Incoming requests -->
+    <div class="fr-section" id="fr-req-lbl" style="display:none;">INCOMING REQUESTS</div>
+    <div id="fr-requests"></div>
+    <!-- Friends list -->
+    <div class="fr-section">FRIENDS</div>
+    <div class="fr-list" id="fr-list">
+      <div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">No friends yet — add someone above!</div>
+    </div>
+    <button class="flows-exit" onclick="showS('s-home');updateHomeFriendsBar()">← BACK</button>
+  </div>
+</div>
+
+<!-- TRANSFER COINS MODAL -->
+<div id="transfer-modal">
+  <div class="tm-box">
+    <div class="tm-title">💰 TRANSFER COINS</div>
+    <div style="font-size:12px;color:#556;letter-spacing:1px;">Sending to: <span id="tm-to" style="color:#ffc400;font-weight:700;"></span></div>
+    <div style="font-size:12px;color:#556;letter-spacing:1px;">Your balance: <span id="tm-bal" style="color:#ffc400;"></span> 🪙</div>
+    <input class="tm-input" id="tm-amount" type="number" placeholder="Amount..." min="1">
+    <div class="tm-msg" id="tm-msg"></div>
+    <div class="tm-btns">
+      <button class="tm-cancel" onclick="document.getElementById('transfer-modal').classList.remove('on')">CANCEL</button>
+      <button class="tm-send" onclick="doTransfer()">SEND 🪙</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME INVITE MODAL -->
+<div id="invite-modal">
+  <div class="inv-box">
+    <div class="inv-title">⚽ GAME INVITE</div>
+    <div class="inv-msg" id="invite-msg">Loading...</div>
+    <button class="inv-btn-acc" id="invite-acc" onclick="acceptGameInvite()">✓ ACCEPT</button>
+    <button class="inv-btn-dec" onclick="declineGameInvite()">✕ DECLINE</button>
   </div>
 </div>
 
@@ -2609,7 +2718,398 @@ function goHomeEnd(){ gRunning=false; showTouchHUD(false); showS('s-home'); if(c
 })();
 
 // ═══════════════════════════════════════
-// TOUCH CONTROLS
+// ═══════════════════════════════════════
+// FIREBASE CONFIG — PASTE YOURS HERE
+// ═══════════════════════════════════════
+  const firebaseConfig = {
+    apiKey: "AIzaSyDxWW07R9Qer_cqoblOlBCH3M1WANt1vbo",
+    authDomain: "bluelockrivalstemu.firebaseapp.com",
+    databaseURL: "https://bluelockrivalstemu-default-rtdb.firebaseio.com",
+    projectId: "bluelockrivalstemu",
+    storageBucket: "bluelockrivalstemu.firebasestorage.app",
+    messagingSenderId: "448050505987",
+    appId: "1:448050505987:web:ef5f86fd7ab11d7a08a136",
+    measurementId: "G-CE776PM4D4"
+  };
+
+let db = null;
+let fbReady = false;
+let presenceRef = null;
+let friendsListener = null;
+let requestsListener = null;
+let inviteListener = null;
+let pendingInvite = null; // { from, gameId }
+let onlineGameId = null;
+let onlineRole = null; // 'host' or 'guest'
+let onlineSyncTimer = null;
+
+function initFirebase(){
+  try{
+    if(firebaseConfig.apiKey === 'PASTE_YOUR_API_KEY_HERE') return;
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    fbReady = true;
+    console.log('Firebase ready');
+  } catch(e){ console.warn('Firebase init failed:',e); }
+}
+
+// ── Firebase user data helpers ─────────────────────────────────────────────
+function uRef(u){ return db.ref('users/'+(u||currentUser)); }
+
+async function fbSaveData(){
+  if(!fbReady||!currentUser) return;
+  try{
+    await uRef().child('data').set({
+      coins, unlocked, nelPlayers, gkLevel,
+      activeFlow, ownedFlows, flowSlots, equippedFlows,
+      lastPlayedId, lastSeen: Date.now()
+    });
+  } catch(e){ console.warn('FB save failed:',e); }
+}
+
+async function fbLoadData(){
+  if(!fbReady||!currentUser) return false;
+  try{
+    const snap = await uRef().child('data').once('value');
+    const d = snap.val(); if(!d) return false;
+    coins = d.coins||0; unlocked = d.unlocked||['igaguri'];
+    nelPlayers = d.nelPlayers||[]; gkLevel = d.gkLevel||0;
+    activeFlow = d.activeFlow||null; ownedFlows = d.ownedFlows||[];
+    flowSlots = d.flowSlots||1; equippedFlows = d.equippedFlows||[];
+    lastPlayedId = d.lastPlayedId||null;
+    return true;
+  } catch(e){ return false; }
+}
+
+// ── Presence ──────────────────────────────────────────────────────────────
+function setupPresence(){
+  if(!fbReady||!currentUser) return;
+  presenceRef = uRef().child('online');
+  presenceRef.set(true);
+  presenceRef.onDisconnect().set(false);
+}
+
+function teardownPresence(){
+  if(presenceRef) presenceRef.set(false);
+}
+
+// ── saveStor override to also sync Firebase ────────────────────────────────
+const _origSaveStor = saveStor;
+
+// ── Friends system ─────────────────────────────────────────────────────────
+function openFriends(){
+  showS('s-friends');
+  buildFriendsList();
+  listenFriendRequests();
+}
+
+async function sendFriendRequest(){
+  const to = document.getElementById('fr-input').value.trim();
+  const msg = document.getElementById('fr-msg');
+  if(!to){ msg.textContent='Enter a username.'; return; }
+  if(to === currentUser){ msg.textContent='You can\'t friend yourself!'; return; }
+  if(!fbReady){ msg.textContent='⚠ Firebase not set up yet.'; return; }
+
+  // Check user exists
+  const snap = await db.ref('users/'+to+'/data').once('value');
+  if(!snap.exists()){ msg.textContent='❌ User "'+to+'" not found.'; return; }
+
+  // Check already friends
+  const fSnap = await uRef().child('friends/'+to).once('value');
+  if(fSnap.val()){ msg.textContent='Already friends with '+to+'!'; return; }
+
+  // Send request
+  await db.ref('friendRequests/'+to+'/'+currentUser).set({ from:currentUser, timestamp:Date.now() });
+  msg.style.color='#00ff88'; msg.textContent='✦ Friend request sent to '+to+'!';
+  document.getElementById('fr-input').value='';
+  setTimeout(()=>{ msg.textContent=''; msg.style.color='#ffc400'; },3000);
+}
+
+function listenFriendRequests(){
+  if(!fbReady||!currentUser) return;
+  if(requestsListener) requestsListener();
+  const ref = db.ref('friendRequests/'+currentUser);
+  requestsListener = ref.on('value', snap=>{
+    const reqs = snap.val()||{};
+    const keys = Object.keys(reqs);
+    const lbl = document.getElementById('fr-req-lbl');
+    const cont = document.getElementById('fr-requests');
+    if(!lbl||!cont) return;
+    lbl.style.display = keys.length>0?'block':'none';
+    cont.innerHTML='';
+    keys.forEach(from=>{
+      const card = document.createElement('div');
+      card.className='fr-req-card';
+      card.innerHTML=`<span class="fr-name">${from}</span><span class="fr-status">wants to be friends</span>
+        <div class="fr-actions">
+          <button class="fr-btn fr-btn-acc" onclick="acceptFriend('${from}')">ACCEPT</button>
+          <button class="fr-btn fr-btn-dec" onclick="declineFriend('${from}')">DECLINE</button>
+        </div>`;
+      cont.appendChild(card);
+    });
+  });
+}
+
+async function acceptFriend(from){
+  if(!fbReady) return;
+  // Add both ways
+  await uRef().child('friends/'+from).set(true);
+  await uRef(from).child('friends/'+currentUser).set(true);
+  // Remove request
+  await db.ref('friendRequests/'+currentUser+'/'+from).remove();
+  buildFriendsList();
+}
+
+async function declineFriend(from){
+  await db.ref('friendRequests/'+currentUser+'/'+from).remove();
+}
+
+async function removeFriend(name){
+  if(!fbReady) return;
+  await uRef().child('friends/'+name).remove();
+  await uRef(name).child('friends/'+currentUser).remove();
+  buildFriendsList();
+}
+
+async function buildFriendsList(){
+  const list = document.getElementById('fr-list'); if(!list) return;
+  if(!fbReady){ list.innerHTML='<div style="font-size:12px;color:#ff8800;text-align:center;padding:16px;letter-spacing:2px;">⚠ Firebase not configured yet</div>'; return; }
+  const snap = await uRef().child('friends').once('value');
+  const friends = snap.val()||{};
+  const names = Object.keys(friends);
+  if(names.length===0){ list.innerHTML='<div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">No friends yet — add someone above!</div>'; updateHomeFriendsBar(); return; }
+
+  list.innerHTML='';
+  for(const name of names){
+    const onlineSnap = await db.ref('users/'+name+'/online').once('value');
+    const isOnline = onlineSnap.val()===true;
+    const card = document.createElement('div');
+    card.className='fr-card';
+    card.innerHTML=`
+      <div class="fr-dot ${isOnline?'online':'offline'}"></div>
+      <div>
+        <div class="fr-name">${name}</div>
+        <div class="fr-status">${isOnline?'🟢 Online':'⚫ Offline'}</div>
+      </div>
+      <div class="fr-actions">
+        ${isOnline?`<button class="fr-btn fr-btn-play" onclick="inviteToGame('${name}')">PLAY</button>`:''}
+        <button class="fr-btn fr-btn-coins" onclick="openTransfer('${name}')">💰</button>
+        <button class="fr-btn fr-btn-del" onclick="removeFriend('${name}')">✕</button>
+      </div>`;
+    list.appendChild(card);
+  }
+  updateHomeFriendsBar(names);
+}
+
+async function updateHomeFriendsBar(names){
+  const bar = document.getElementById('home-friends-bar'); if(!bar) return;
+  if(!fbReady||!names){ bar.innerHTML=''; return; }
+  if(!names){
+    const snap = await uRef().child('friends').once('value');
+    names = Object.keys(snap.val()||{});
+  }
+  if(names.length===0){ bar.innerHTML=''; return; }
+  bar.innerHTML='';
+  for(const name of names){
+    const onSnap = await db.ref('users/'+name+'/online').once('value');
+    const isOnline = onSnap.val()===true;
+    const d = document.createElement('div'); d.className='hf-dot';
+    d.innerHTML=`<span class="dot" style="background:${isOnline?'#00ff88':'#334'};${isOnline?'box-shadow:0 0 6px #00ff88':''}"></span>${name}`;
+    bar.appendChild(d);
+  }
+}
+
+// ── Coin Transfer ──────────────────────────────────────────────────────────
+let transferTarget='';
+function openTransfer(to){
+  transferTarget=to;
+  document.getElementById('tm-to').textContent=to;
+  document.getElementById('tm-bal').textContent=coins.toLocaleString();
+  document.getElementById('tm-amount').value='';
+  document.getElementById('tm-msg').textContent='';
+  document.getElementById('transfer-modal').classList.add('on');
+}
+
+async function doTransfer(){
+  const amt = parseInt(document.getElementById('tm-amount').value)||0;
+  const msg = document.getElementById('tm-msg');
+  if(amt<=0){ msg.textContent='Enter a valid amount.'; return; }
+  if(amt>coins){ msg.textContent='Not enough coins!'; return; }
+  if(!fbReady){ msg.textContent='Firebase not set up.'; return; }
+  // Check target exists
+  const snap = await db.ref('users/'+transferTarget+'/data').once('value');
+  if(!snap.exists()){ msg.textContent='User not found.'; return; }
+
+  // Deduct from self
+  addCoins(-amt);
+  await fbSaveData();
+
+  // Add to target
+  const theirData = snap.val();
+  const newCoins = (theirData.coins||0)+amt;
+  await db.ref('users/'+transferTarget+'/data/coins').set(newCoins);
+  // Also notify via a transfer record
+  await db.ref('transfers/'+transferTarget).push({ from:currentUser, amount:amt, timestamp:Date.now() });
+
+  msg.style.color='#00ff88';
+  msg.textContent=`✦ Sent ${amt.toLocaleString()} coins to ${transferTarget}!`;
+  document.getElementById('tm-bal').textContent=coins.toLocaleString();
+  updateHomeCoins();
+  setTimeout(()=>{ document.getElementById('transfer-modal').classList.remove('on'); },1800);
+}
+
+// Listen for incoming transfers (even when offline previously — catches up on login)
+function listenTransfers(){
+  if(!fbReady||!currentUser) return;
+  const ref = db.ref('transfers/'+currentUser);
+  ref.on('child_added', snap=>{
+    const t = snap.val();
+    if(!t) return;
+    addCoins(t.amount);
+    fbSaveData();
+    updateHomeCoins();
+    showDailyToast('💰 +'+t.amount.toLocaleString()+' coins from '+t.from+'!', false);
+    snap.ref.remove(); // clear once processed
+  });
+}
+
+// ── Online Multiplayer ─────────────────────────────────────────────────────
+async function inviteToGame(friend){
+  if(!fbReady) return;
+  const gameId = currentUser+'_'+friend+'_'+Date.now();
+  await db.ref('gameInvites/'+friend+'/'+currentUser).set({ gameId, from:currentUser, status:'pending', timestamp:Date.now() });
+  showDailyToast('📨 Invite sent to '+friend+'!', false);
+  // Wait for acceptance
+  const invRef = db.ref('gameInvites/'+friend+'/'+currentUser);
+  invRef.on('value', snap=>{
+    const d = snap.val();
+    if(!d) return;
+    if(d.status==='accepted'){
+      invRef.off(); invRef.remove();
+      // Start game as host
+      startOnlineGame(gameId, friend, 'host');
+    } else if(d.status==='declined'){
+      invRef.off(); invRef.remove();
+      showDailyToast('❌ '+friend+' declined.', true);
+    }
+  });
+}
+
+// Listen for game invites
+function listenGameInvites(){
+  if(!fbReady||!currentUser) return;
+  if(inviteListener) return;
+  const ref = db.ref('gameInvites/'+currentUser);
+  inviteListener = ref.on('child_added', snap=>{
+    const d = snap.val(); if(!d||d.status!=='pending') return;
+    pendingInvite = { from:d.from, gameId:d.gameId, ref:snap.ref };
+    document.getElementById('invite-msg').textContent=d.from+' wants to play with you!';
+    document.getElementById('invite-modal').classList.add('on');
+  });
+}
+
+async function acceptGameInvite(){
+  if(!pendingInvite) return;
+  document.getElementById('invite-modal').classList.remove('on');
+  await pendingInvite.ref.update({ status:'accepted' });
+  startOnlineGame(pendingInvite.gameId, pendingInvite.from, 'guest');
+  pendingInvite=null;
+}
+
+async function declineGameInvite(){
+  if(!pendingInvite) return;
+  document.getElementById('invite-modal').classList.remove('on');
+  await pendingInvite.ref.update({ status:'declined' });
+  pendingInvite=null;
+}
+
+function startOnlineGame(gameId, opponent, role){
+  onlineGameId=gameId; onlineRole=role;
+  const myChar = p1Id||'igaguri';
+  const oppChar = role==='host'?'igaguri':myChar; // host picks AI char initially
+  gameMode='online_'+role;
+  showDailyToast(role==='host'?'⚽ HOSTING...':'⚽ JOINING...', false);
+  // Write initial game state
+  if(role==='host'){
+    db.ref('games/'+gameId).set({ host:currentUser, guest:opponent, hostChar:myChar, guestChar:'igaguri', status:'waiting' });
+    db.ref('games/'+gameId+'/guestChar').on('value', snap=>{
+      if(snap.val()&&snap.val()!=='igaguri'){
+        db.ref('games/'+gameId+'/status').set('playing');
+        initGame(myChar, snap.val());
+        startOnlineSync();
+      }
+    });
+  } else {
+    db.ref('games/'+gameId+'/hostChar').once('value', snap=>{
+      const hc = snap.val()||'igaguri';
+      db.ref('games/'+gameId+'/guestChar').set(myChar);
+      // Wait for status=playing
+      db.ref('games/'+gameId+'/status').on('value', sSnap=>{
+        if(sSnap.val()==='playing'){
+          db.ref('games/'+gameId+'/status').off();
+          initGame(myChar, hc);
+          startOnlineSync();
+        }
+      });
+    });
+  }
+}
+
+function startOnlineSync(){
+  if(!onlineGameId) return;
+  if(onlineRole==='host'){
+    // Host: write game state every 50ms
+    onlineSyncTimer=setInterval(()=>{
+      if(!gRunning) return;
+      db.ref('games/'+onlineGameId+'/state').set({
+        px:Math.round(P.x), py:Math.round(P.y),
+        ax:Math.round(A.x), ay:Math.round(A.y),
+        bx:Math.round(Ball.x), by:Math.round(Ball.y),
+        sp:score.p, sa:score.a, t:Math.round(gameTime*10)/10
+      });
+      // Read guest input
+      db.ref('games/'+onlineGameId+'/guestInput').once('value', snap=>{
+        const inp = snap.val(); if(!inp) return;
+        A.vx=inp.vx||0; A.vy=inp.vy||0;
+        if(inp.shoot) doShoot(A);
+        if(inp.q) doMove(A,0); if(inp.e) doMove(A,1); if(inp.r) doMove(A,2);
+        if(inp.steal) doStealKey(A,P);
+        if(inp.awk) doAwaken(A);
+      });
+    },50);
+  } else {
+    // Guest: read game state and write input
+    db.ref('games/'+onlineGameId+'/state').on('value', snap=>{
+      const s = snap.val(); if(!s||!gRunning) return;
+      // Apply host state to game
+      A.x=s.px; A.y=s.py; // in guest view, host=opponent
+      P.x=s.ax; P.y=s.ay;
+      Ball.x=s.bx; Ball.y=s.by;
+      score.a=s.sp; score.p=s.sa; gameTime=s.t;
+    });
+    onlineSyncTimer=setInterval(()=>{
+      if(!gRunning) return;
+      const inp={
+        vx:P.vx, vy:P.vy,
+        shoot:K[' ']||false, q:K['q']||false, e:K['e']||false, r:K['r']||false,
+        steal:K['f']||false, awk:K['g']||false
+      };
+      if(touchMode){ inp.vx=joyDX*(effSpd(P)||5); inp.vy=joyDY*(effSpd(P)||5); }
+      db.ref('games/'+onlineGameId+'/guestInput').set(inp);
+    },50);
+  }
+}
+
+function stopOnlineSync(){
+  if(onlineSyncTimer){ clearInterval(onlineSyncTimer); onlineSyncTimer=null; }
+  if(onlineGameId) db.ref('games/'+onlineGameId).remove();
+  onlineGameId=null; onlineRole=null;
+}
+
+// ── Init Firebase on page load ─────────────────────────────────────────────
+initFirebase();
+
+// ── TOUCH CONTROLS
 // ═══════════════════════════════════════
 let touchMode=false;
 let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
@@ -2836,12 +3336,19 @@ function doLogin(){
   document.getElementById('lock-icon').textContent='🔓';
   currentUser=u;
   loadStor();
+  // Try loading from Firebase (async, falls back to localStorage)
+  fbLoadData().then(fromFB=>{
+    if(fromFB){ saveStor(); updateHomeCoins(); }
+  });
+  setupPresence();
+  listenTransfers();
+  listenGameInvites();
   setTimeout(()=>{
     showS('s-home');
     document.getElementById('home-username').textContent=u.toUpperCase();
     updateHomeCoins();
     updateDailyBtn();
-    // Reset lock for next time
+    updateHomeFriendsBar();
     document.getElementById('lock-icon').textContent='🔒';
     err.textContent=''; err.style.color='#ff4444';
     document.getElementById('login-user').value='';
@@ -2885,6 +3392,8 @@ function doRegister(){
 
 // LOGOUT
 function doLogout(){
+  teardownPresence();
+  stopOnlineSync();
   currentUser=null;
   coins=0; nelPlayers=[]; unlocked=['igaguri']; gkLevel=0; activeFlow=null; lastPlayedId=null;
   showS('s-login');
