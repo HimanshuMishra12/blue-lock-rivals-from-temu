@@ -510,6 +510,7 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
   </div>
   <div id="hud-ai"></div>
   <div id="ctrl-hint"></div>
+  <button id="hud-end-btn" onclick="requestEndGame()" style="position:absolute;top:10px;right:12px;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:3px;padding:6px 16px;background:rgba(255,50,50,.15);border:1px solid rgba(255,50,50,.3);color:#ff4444;cursor:pointer;border-radius:4px;transition:all .2s;display:none;">✕ END GAME</button>
   <div id="hud-p1b">
     <div class="hpname" id="p1-nm" style="color:#00aaff;">YOU</div>
     <div class="hpmoves" id="p1-moves"></div>
@@ -1656,6 +1657,11 @@ const K={};
 addEventListener('keydown',e=>{
   const k=nKey(e.key); if(!K[k]){K[k]=true; if(gRunning&&!csRunning) onKey(k,e);}
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  // Escape key from any non-game screen goes home
+  if(e.key==='Escape'&&!gRunning){
+    const active=document.querySelector('.screen.active');
+    if(active&&active.id!=='s-home'&&active.id!=='s-login') goHomeFromAnywhere();
+  }
 });
 addEventListener('keyup',e=>{K[nKey(e.key)]=false;});
 function nKey(k){ return k==='ArrowLeft'?'arrowleft':k==='ArrowRight'?'arrowright':k==='ArrowUp'?'arrowup':k==='ArrowDown'?'arrowdown':k.toLowerCase(); }
@@ -1698,6 +1704,8 @@ function initGame(p1id,aiid){
   resetEnts(true);
   lastTS=performance.now();
   showTouchHUD(touchMode);
+  const endBtn=document.getElementById('hud-end-btn');
+  if(endBtn) endBtn.style.display='block';
   if(touchMode) setTimeout(updateTouchMoveLabels,500);
   requestAnimationFrame(gFrame);
 }
@@ -2720,10 +2728,35 @@ function shakeGame(){ const e=document.getElementById('s-game');e.classList.add(
 // ═══════════════════════════════════════
 // GAMEOVER
 // ═══════════════════════════════════════
+function requestEndGame(){
+  if(!gRunning) return;
+  if(onlineGameId){
+    // Online game — signal both sides
+    showDailyToast('Ending game...', false);
+    stopOnlineSync();
+    setTimeout(endGame, 400);
+  } else {
+    endGame();
+  }
+}
+
+function goHomeFromAnywhere(){
+  gRunning=false;
+  showTouchHUD(false);
+  if(onlineGameId) stopOnlineSync();
+  const endBtn=document.getElementById('hud-end-btn');
+  if(endBtn) endBtn.style.display='none';
+  showS('s-home');
+  if(currentUser) document.getElementById('home-username').textContent=currentUser.toUpperCase();
+  updateHomeCoins();
+}
+
 function endGame(){
   gRunning=false;
   showTouchHUD(false);
   if(onlineGameId) stopOnlineSync();
+  const endBtn=document.getElementById('hud-end-btn');
+  if(endBtn) endBtn.style.display='none';
   const {p,a}=score; const earned=p>a?70:p===a?15:0;
   addCoins(earned);
   showS('s-go');
@@ -2735,8 +2768,8 @@ function endGame(){
   else{tt.textContent='DRAW!';tt.style.color='#ffc400';}
 }
 let curAIIdForReplay;
-function replayGame(){ curAIIdForReplay=curAIId; initGame(curP1Id,curAIId); }
-function goHomeEnd(){ gRunning=false; showTouchHUD(false); showS('s-home'); if(currentUser) document.getElementById('home-username').textContent=currentUser.toUpperCase(); updateHomeCoins(); }
+function replayGame(){ if(onlineGameId) return; curAIIdForReplay=curAIId; initGame(curP1Id,curAIId); }
+function goHomeEnd(){ gRunning=false; showTouchHUD(false); if(onlineGameId) stopOnlineSync(); const endBtn=document.getElementById('hud-end-btn'); if(endBtn) endBtn.style.display='none'; showS('s-home'); if(currentUser) document.getElementById('home-username').textContent=currentUser.toUpperCase(); updateHomeCoins(); }
 
 // ═══════════════════════════════════════
 // HOME ANIMATION
@@ -3271,6 +3304,13 @@ function patchUpdateForOnlineHost(){
   db.ref('games/'+onlineGameId+'/inputs').on('value', snap=>{
     _guestInputCache = snap.val()||{};
   });
+  // Listen for termination signal from guest
+  db.ref('games/'+onlineGameId+'/state/terminated').on('value', snap=>{
+    if(snap.val()===1&&gRunning&&onlineRole==='host'){
+      showDailyToast('❌ Opponent left the game!', true);
+      setTimeout(endGame, 800);
+    }
+  });
 
   // Override the global update function to inject guest inputs before physics
   _origUpdate = window.update;
@@ -3320,6 +3360,7 @@ function patchUpdateForOnlineHost(){
         // Game state
         sp:score.p, sa:score.a,
         t:Math.round(gameTime*10)/10,
+        ended:gameTime<=0?1:0,
         ts:Date.now()
       });
     } catch(e){}
@@ -3390,6 +3431,8 @@ function patchUpdateForOnlineGuest(){
       document.getElementById('hsc-p').textContent=score.p;
       document.getElementById('hsc-a').textContent=score.a;
       gameTime=Math.max(0,s.t);
+      // Host says game over OR host terminated
+      if((s.ended||s.terminated)&&gRunning){ gRunning=false; setTimeout(endGame,300); }
     }
   });
 
@@ -3424,18 +3467,11 @@ function patchUpdateForOnlineGuest(){
         steal:K['f']||false, awk:K['g']||false
       });
     } catch(e){}
-  }, 50);
+  }, 33);
 }
 
 function checkGameEnd(){
-  if(gameTime<=0&&gRunning){
-    if(onlineRole==='guest'){
-      // Guest just shows result — host triggers endGame
-      db.ref('games/'+onlineGameId+'/state/t').once('value',snap=>{
-        if(snap.val()<=0) endGame();
-      });
-    }
-  }
+  // Called by guest update each frame — checks if host says game is over
 }
 
 function stopOnlineSync(){
@@ -3450,7 +3486,14 @@ function stopOnlineSync(){
   }
   if(onlineGameId){
     db.ref('games/'+onlineGameId+'/inputs').off();
-    if(onlineRole==='host') db.ref('games/'+onlineGameId).remove();
+    if(onlineRole==='host'){
+      // Signal guest to end too, then remove after delay
+      db.ref('games/'+onlineGameId+'/state/terminated').set(1);
+      setTimeout(()=>{ db.ref('games/'+onlineGameId).remove(); }, 2000);
+    } else {
+      // Signal host that guest left
+      db.ref('games/'+onlineGameId+'/state/terminated').set(1);
+    }
   }
   _guestInputCache={};
   onlineGameId=null; onlineRole=null;
@@ -3708,13 +3751,27 @@ function switchTab(tab){
 }
 
 // LOGIN
-function doLogin(){
+async function doLogin(){
   const u=document.getElementById('login-user').value.trim().toLowerCase();
   const p=document.getElementById('login-pass').value.trim();
   const err=document.getElementById('login-err');
   err.style.color='#ff4444';
   if(!u||!p){err.textContent='⚠ Enter both fields.';shakePanel('panel-login');return;}
-  const users=getUsers();
+
+  // Check local first, then Firebase (for cross-device persistence)
+  let users=getUsers();
+  if(!users[u]&&fbReady){
+    // Not in local storage — try Firebase
+    err.textContent='🔍 Checking account...';
+    try{
+      const snap=await db.ref('auth/'+u).once('value');
+      if(snap.exists()){
+        const fbUser=snap.val();
+        users[u]={pass:fbUser.pass,created:fbUser.created};
+        saveUsers(users);
+      }
+    }catch(e){}
+  }
   if(!users[u]){err.textContent='❌ Username not found. Register first!';shakePanel('panel-login');return;}
   if(users[u].pass!==btoa(p)){
     document.getElementById('login-pass').value='';
@@ -3727,6 +3784,10 @@ function doLogin(){
   document.getElementById('lock-icon').textContent='🔓';
   currentUser=u;
   loadStor();
+  // Ensure auth record exists in Firebase (cross-device persistence)
+  if(fbReady){ db.ref('auth/'+currentUser).once('value').then(snap=>{
+    if(!snap.exists()) db.ref('auth/'+currentUser).set({pass:users[currentUser]?.pass||'',created:Date.now()});
+  }).catch(()=>{}); }
   // Try loading from Firebase (async, falls back to localStorage)
   fbLoadData().then(fromFB=>{
     if(fromFB){ saveStor(); updateHomeCoins(); }
@@ -3766,9 +3827,11 @@ function doRegister(){
   }
   const users=getUsers();
   if(users[u]){err.textContent='❌ Username already taken. Try another.';shakePanel('panel-register');return;}
-  // Save new user
+  // Save new user locally
   users[u]={pass:btoa(p),created:Date.now()};
   saveUsers(users);
+  // Also persist to Firebase so user can login from any device
+  if(fbReady){ db.ref('auth/'+u).set({pass:btoa(p),created:Date.now()}); }
   // SUCCESS — auto log them in
   err.style.color='#00ff88';
   err.textContent='✦ ACCOUNT CREATED! LOGGING IN...';
