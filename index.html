@@ -114,8 +114,10 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
 .fr-btn-play:hover{background:#33ccff;}
 .fr-btn-coins{background:rgba(255,196,0,.2);color:#ffc400;border:1px solid rgba(255,196,0,.3);}
 .fr-btn-coins:hover{background:rgba(255,196,0,.35);}
-.fr-btn-del{background:rgba(255,50,50,.15);color:#ff4444;border:1px solid rgba(255,50,50,.2);}
-.fr-btn-del:hover{background:rgba(255,50,50,.3);}
+.fr-btn-nudge{background:rgba(255,196,0,.15);color:#ffc400;border:1px solid rgba(255,196,0,.3);}
+.fr-btn-nudge:hover{background:rgba(255,196,0,.35);}
+.fr-btn-nudge:disabled{opacity:.35;cursor:default;}
+.fr-online-card{background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.12);}
 .fr-req-card{background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px;width:460px;}
 .fr-btn-acc{background:#00aa44;color:#fff;} .fr-btn-acc:hover{background:#00cc55;}
 .fr-btn-dec{background:#aa2200;color:#fff;} .fr-btn-dec:hover{background:#cc3300;}
@@ -295,11 +297,12 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
       <div class="login-err" id="login-err"></div>
       <button class="login-btn" onclick="doLogin()">⚡ ENTER THE EGO</button>
       <div style="margin-top:8px;width:100%;">
-        <div class="login-lbl" style="margin-bottom:5px;">Control Mode</div>
+        <div class="login-lbl" style="margin-bottom:5px;">Control Mode <span id="ctrl-auto-lbl" style="color:#00ff88;font-size:9px;letter-spacing:1px;">AUTO-DETECTED</span></div>
         <div class="touch-mode-pick">
           <button class="touch-mode-btn sel" id="ctrl-keyboard" onclick="setCtrlMode('keyboard')">⌨️ KEYBOARD</button>
           <button class="touch-mode-btn" id="ctrl-touch" onclick="setCtrlMode('touch')">👆 TOUCHSCREEN</button>
         </div>
+        <div style="font-size:9px;color:#1a3a4a;letter-spacing:1px;margin-top:4px;text-align:center;">Auto-detected for your device — tap to override</div>
       </div>
       <div class="login-hint">No account? Switch to Register above</div>
     </div>
@@ -337,8 +340,7 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
       </div>
       <div id="home-friends-bar"></div>
       <button class="hbtn" id="daily-btn" onclick="claimDaily()" style="background:linear-gradient(135deg,#ff8800,#ffc400);color:#000;clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);">🎁 DAILY REWARD</button>
-      <div id="home-friends-bar"></div>
-      <button class="hbtn" id="daily-btn" onclick="claimDaily()" style="background:linear-gradient(135deg,#ff8800,#ffc400);color:#000;clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);">🎁 DAILY REWARD</button>
+      <button id="home-ctrl-btn" onclick="toggleCtrlMode()" style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 22px;background:transparent;border:1px solid #00aaff;color:#00aaff;cursor:pointer;border-radius:4px;transition:all .2s;">⌨️ KEYBOARD</button>
     </div>
   </div>
 </div>
@@ -358,19 +360,37 @@ body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidde
 <div id="s-friends" class="screen">
   <div class="fr-wrap">
     <div class="fr-title">👥 SOCIAL</div>
-    <div class="fr-add">
-      <input id="fr-input" type="text" placeholder="Enter username..." autocomplete="off" spellcheck="false" maxlength="20">
-      <button onclick="sendFriendRequest()">ADD FRIEND</button>
+
+    <!-- Tabs -->
+    <div class="auth-tabs" style="width:460px;margin-bottom:12px;">
+      <button class="auth-tab active" id="tab-online" onclick="switchSocialTab('online')">🟢 ONLINE NOW</button>
+      <button class="auth-tab" id="tab-friends" onclick="switchSocialTab('friends')">👥 FRIENDS</button>
     </div>
-    <div class="fr-msg" id="fr-msg"></div>
-    <!-- Incoming requests -->
-    <div class="fr-section" id="fr-req-lbl" style="display:none;">INCOMING REQUESTS</div>
-    <div id="fr-requests"></div>
-    <!-- Friends list -->
-    <div class="fr-section">FRIENDS</div>
-    <div class="fr-list" id="fr-list">
-      <div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">No friends yet — add someone above!</div>
+
+    <!-- ONLINE NOW panel -->
+    <div id="social-online-panel" style="width:460px;">
+      <div style="font-size:10px;color:#334;letter-spacing:2px;text-align:center;margin-bottom:10px;">ALL PLAYERS CURRENTLY ONLINE — CLICK TO PLAY OR NUDGE</div>
+      <div id="online-list" class="fr-list">
+        <div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">Loading online players...</div>
+      </div>
     </div>
+
+    <!-- FRIENDS panel -->
+    <div id="social-friends-panel" style="display:none;width:460px;">
+      <div class="fr-add" style="margin-bottom:8px;">
+        <input id="fr-input" type="text" placeholder="Enter username to add..." autocomplete="off" spellcheck="false" maxlength="20">
+        <button onclick="sendFriendRequest()">ADD</button>
+      </div>
+      <div class="fr-msg" id="fr-msg"></div>
+      <!-- Incoming requests -->
+      <div class="fr-section" id="fr-req-lbl" style="display:none;">INCOMING REQUESTS</div>
+      <div id="fr-requests"></div>
+      <div class="fr-section">MY FRIENDS</div>
+      <div class="fr-list" id="fr-list">
+        <div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">No friends yet — add someone above!</div>
+      </div>
+    </div>
+
     <button class="flows-exit" onclick="showS('s-home');updateHomeFriendsBar()">← BACK</button>
   </div>
 </div>
@@ -2811,28 +2831,131 @@ function teardownPresence(){
 const _origSaveStor = saveStor;
 
 // ── Friends system ─────────────────────────────────────────────────────────
+let socialTab = 'online';
+let onlinePlayersListener = null;
+let nudgeCooldowns = {}; // prevent spam nudging
+
 function openFriends(){
   showS('s-friends');
-  buildFriendsList();
+  switchSocialTab('online');
   listenFriendRequests();
+}
+
+function switchSocialTab(tab){
+  socialTab = tab;
+  document.getElementById('tab-online').className='auth-tab'+(tab==='online'?' active':'');
+  document.getElementById('tab-friends').className='auth-tab'+(tab==='friends'?' active':'');
+  document.getElementById('social-online-panel').style.display=tab==='online'?'block':'none';
+  document.getElementById('social-friends-panel').style.display=tab==='friends'?'block':'none';
+  if(tab==='online') loadOnlinePlayers();
+  else buildFriendsList();
+}
+
+// ── Load ALL online players from Firebase ─────────────────────────────────
+function loadOnlinePlayers(){
+  const list = document.getElementById('online-list');
+  if(!list) return;
+  if(!fbReady){ list.innerHTML='<div style="font-size:12px;color:#ff8800;text-align:center;padding:16px;letter-spacing:2px;">⚠ Firebase not connected</div>'; return; }
+
+  list.innerHTML='<div style="font-size:12px;color:#334;text-align:center;padding:14px;letter-spacing:2px;">🔍 Scanning for online players...</div>';
+
+  // Stop old listener
+  if(onlinePlayersListener){
+    db.ref('users').off('value', onlinePlayersListener);
+    onlinePlayersListener = null;
+  }
+
+  // Live listener — updates whenever someone comes online/offline
+  onlinePlayersListener = db.ref('users').on('value', snap=>{
+    const all = snap.val()||{};
+    const online = Object.entries(all)
+      .filter(([name, data]) => data.online === true && name !== currentUser)
+      .map(([name]) => name);
+
+    if(online.length === 0){
+      list.innerHTML='<div style="font-size:12px;color:#334;text-align:center;padding:20px;letter-spacing:2px;">No other players online right now.<br><span style="color:#2a4a5a;">Invite a friend to play!</span></div>';
+      return;
+    }
+
+    list.innerHTML='';
+    online.forEach(name=>{
+      const isFriend = false; // we'll check async below
+      const card = document.createElement('div');
+      card.className='fr-card fr-online-card';
+      card.id='online-card-'+name;
+      card.innerHTML=`
+        <div class="fr-dot online"></div>
+        <div style="flex:1;">
+          <div class="fr-name">${name}</div>
+          <div class="fr-status" style="color:#00ff88;">🟢 Online now</div>
+        </div>
+        <div class="fr-actions">
+          <button class="fr-btn fr-btn-play" onclick="inviteToGame('${name}')">⚽ PLAY</button>
+          <button class="fr-btn fr-btn-nudge" id="nudge-${name}" onclick="nudgePlayer('${name}')">👋 NUDGE</button>
+          <button class="fr-btn" style="background:rgba(0,170,255,.15);color:#00aaff;border:1px solid rgba(0,170,255,.2);" onclick="addFriendDirect('${name}')">➕</button>
+        </div>`;
+      list.appendChild(card);
+    });
+  });
+}
+
+// ── Nudge a player ─────────────────────────────────────────────────────────
+async function nudgePlayer(name){
+  const btn = document.getElementById('nudge-'+name);
+  const now = Date.now();
+  if(nudgeCooldowns[name] && now - nudgeCooldowns[name] < 30000){
+    showDailyToast('⏳ Wait before nudging again!', true); return;
+  }
+  nudgeCooldowns[name] = now;
+  if(btn){ btn.disabled=true; btn.textContent='Sent!'; setTimeout(()=>{ btn.disabled=false; btn.textContent='👋 NUDGE'; },30000); }
+
+  await db.ref('nudges/'+name).push({ from:currentUser, timestamp:now });
+  showDailyToast('👋 Nudged '+name+'!', false);
+}
+
+// Listen for nudges coming in
+function listenNudges(){
+  if(!fbReady||!currentUser) return;
+  const nowTs = Date.now();
+  db.ref('nudges/'+currentUser).on('child_added', snap=>{
+    const d = snap.val();
+    if(!d || d.timestamp < nowTs - 5000) { snap.ref.remove(); return; }
+    snap.ref.remove();
+    showDailyToast('👋 '+d.from+' is nudging you to play!', false);
+    // Flash the screen briefly
+    const flash = document.createElement('div');
+    flash.style.cssText='position:fixed;inset:0;background:rgba(0,170,255,.08);z-index:9998;pointer-events:none;animation:gpulse .4s ease 3;';
+    document.body.appendChild(flash);
+    setTimeout(()=>flash.remove(), 1200);
+  });
+}
+
+// ── Quick add friend from online list ─────────────────────────────────────
+async function addFriendDirect(name){
+  if(!fbReady) return;
+  const fSnap = await uRef().child('friends/'+name).once('value');
+  if(fSnap.val()){ showDailyToast('Already friends with '+name+'!', false); return; }
+  await db.ref('friendRequests/'+name+'/'+currentUser).set({ from:currentUser, timestamp:Date.now() });
+  showDailyToast('✦ Friend request sent to '+name+'!', false);
 }
 
 async function sendFriendRequest(){
   const to = document.getElementById('fr-input').value.trim();
   const msg = document.getElementById('fr-msg');
   if(!to){ msg.textContent='Enter a username.'; return; }
-  if(to === currentUser){ msg.textContent='You can\'t friend yourself!'; return; }
+  if(to === currentUser){ msg.textContent="You can\'t friend yourself!"; return; }
   if(!fbReady){ msg.textContent='⚠ Firebase not set up yet.'; return; }
 
-  // Check user exists
-  const snap = await db.ref('users/'+to+'/data').once('value');
-  if(!snap.exists()){ msg.textContent='❌ User "'+to+'" not found.'; return; }
+  // Check user exists in Firebase
+  const snap = await db.ref('users/'+to).once('value');
+  if(!snap.exists()){
+    msg.style.color='#ff4444';
+    msg.textContent='❌ User "'+to+'" not found. They need to log in first.'; return;
+  }
 
-  // Check already friends
   const fSnap = await uRef().child('friends/'+to).once('value');
   if(fSnap.val()){ msg.textContent='Already friends with '+to+'!'; return; }
 
-  // Send request
   await db.ref('friendRequests/'+to+'/'+currentUser).set({ from:currentUser, timestamp:Date.now() });
   msg.style.color='#00ff88'; msg.textContent='✦ Friend request sent to '+to+'!';
   document.getElementById('fr-input').value='';
@@ -3196,16 +3319,57 @@ let touchMode=false;
 let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
 const JOY_MAX=48;
 
-function setCtrlMode(mode){
+function detectTouchDevice(){
+  // True if the device is primarily touch-based
+  const isTouchScreen = (
+    navigator.maxTouchPoints > 1 ||
+    window.matchMedia('(pointer: coarse)').matches ||
+    /Android|iPhone|iPad|iPod|tablet/i.test(navigator.userAgent)
+  );
+  // But if they also have a fine pointer (mouse), treat as desktop
+  const hasMouse = window.matchMedia('(pointer: fine)').matches;
+  // iPad with keyboard attached: has both — prefer what they saved
+  return isTouchScreen && !hasMouse;
+}
+
+function setCtrlMode(mode, save=true){
   touchMode=(mode==='touch');
-  localStorage.setItem('blr_ctrl_mode',mode);
-  document.getElementById('ctrl-keyboard').className='touch-mode-btn'+(touchMode?'':' sel');
-  document.getElementById('ctrl-touch').className='touch-mode-btn'+(touchMode?' sel':'');
+  if(save) localStorage.setItem('blr_ctrl_mode', mode);
+  // Login screen buttons
+  const kb=document.getElementById('ctrl-keyboard');
+  const tc=document.getElementById('ctrl-touch');
+  if(kb) kb.className='touch-mode-btn'+(touchMode?'':' sel');
+  if(tc) tc.className='touch-mode-btn'+(touchMode?' sel':'');
+  // Show CUSTOM label if user manually picked
+  const lbl=document.getElementById('ctrl-auto-lbl');
+  if(lbl) lbl.textContent = save ? 'CUSTOM' : 'AUTO-DETECTED';
+  // Home screen toggle button
+  updateHomeCtrlBtn();
 }
 
 function loadCtrlMode(){
-  const m=localStorage.getItem('blr_ctrl_mode')||'keyboard';
-  setCtrlMode(m);
+  const saved = localStorage.getItem('blr_ctrl_mode');
+  if(saved){
+    // User has explicitly chosen before — respect their choice
+    setCtrlMode(saved, false);
+  } else {
+    // First time — auto detect
+    const autoTouch = detectTouchDevice();
+    setCtrlMode(autoTouch?'touch':'keyboard');
+  }
+}
+
+function updateHomeCtrlBtn(){
+  const btn = document.getElementById('home-ctrl-btn');
+  if(!btn) return;
+  btn.textContent = touchMode ? '👆 TOUCHSCREEN' : '⌨️ KEYBOARD';
+  btn.style.borderColor = touchMode ? '#00ff88' : '#00aaff';
+  btn.style.color = touchMode ? '#00ff88' : '#00aaff';
+}
+
+function toggleCtrlMode(){
+  setCtrlMode(touchMode?'keyboard':'touch');
+  showDailyToast(touchMode?'👆 Touchscreen mode ON':'⌨️ Keyboard mode ON', false);
 }
 
 function showTouchHUD(show){
@@ -3424,12 +3588,14 @@ function doLogin(){
   setupPresence();
   listenTransfers();
   listenGameInvites();
+  listenNudges();
   setTimeout(()=>{
     showS('s-home');
     document.getElementById('home-username').textContent=u.toUpperCase();
     updateHomeCoins();
     updateDailyBtn();
     updateHomeFriendsBar();
+    updateHomeCtrlBtn();
     document.getElementById('lock-icon').textContent='🔒';
     err.textContent=''; err.style.color='#ff4444';
     document.getElementById('login-user').value='';
