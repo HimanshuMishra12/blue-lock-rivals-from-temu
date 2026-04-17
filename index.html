@@ -6,8 +6,8 @@
 <title>BLUE LOCK RIVALS</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
 <!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:#000;color:#fff;font-family:'Rajdhani',sans-serif;overflow:hidden;width:100vw;height:100vh;user-select:none;}
@@ -2753,10 +2753,13 @@ function goHomeEnd(){ gRunning=false; showTouchHUD(false); showS('s-home'); if(c
 
 // ═══════════════════════════════════════
 // ═══════════════════════════════════════
-// FIREBASE CONFIG — PASTE YOURS HERE
+// FIREBASE CONFIG
+// Note: This is a client-side web app. Firebase API keys are public by design.
+// Security is enforced via Firebase Security Rules, not by hiding the key.
+// See: https://firebase.google.com/docs/projects/api-keys
 // ═══════════════════════════════════════
 const firebaseConfig = {
-  apiKey: "AIzaSyDxWW07R9Qer_cqoblOlBCH3M1WANt1vbo",
+  apiKey: "AIzaSyDxWW07R9Qer_cqoblOlBCH3M1WANt1vbo", // firebase-config
   authDomain: "bluelockrivalstemu.firebaseapp.com",
   databaseURL: "https://bluelockrivalstemu-default-rtdb.firebaseio.com",
   projectId: "bluelockrivalstemu",
@@ -2779,12 +2782,17 @@ let onlineSyncTimer = null;
 
 function initFirebase(){
   try{
+    if(typeof firebase === 'undefined'){
+      // SDK not loaded yet — retry after a short delay
+      setTimeout(initFirebase, 200);
+      return;
+    }
     if(firebaseConfig.apiKey === 'PASTE_YOUR_API_KEY_HERE') return;
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     db = firebase.database();
     fbReady = true;
     console.log('Firebase ready');
-  } catch(e){ console.warn('Firebase init failed:',e); }
+  } catch(e){ console.warn('Firebase init failed:', e); }
 }
 
 // ── Firebase user data helpers ─────────────────────────────────────────────
@@ -2940,7 +2948,7 @@ async function addFriendDirect(name){
 }
 
 async function sendFriendRequest(){
-  const to = document.getElementById('fr-input').value.trim();
+  const to = document.getElementById('fr-input').value.trim().toLowerCase();
   const msg = document.getElementById('fr-msg');
   if(!to){ msg.textContent='Enter a username.'; return; }
   if(to === currentUser){ msg.textContent="You can\'t friend yourself!"; return; }
@@ -3232,73 +3240,85 @@ function startOnlineSync(){
   if(!onlineGameId||!gRunning) return;
   console.log('Online sync starting as', onlineRole);
 
-  if(onlineRole==='host'){
-    // Host owns the game simulation — writes full state, reads guest inputs
-    onlineSyncTimer = setInterval(()=>{
-      if(!gRunning){ stopOnlineSync(); return; }
-      // Write game state
-      try{
-        db.ref('games/'+onlineGameId+'/state').set({
-          px:Math.round(P.x), py:Math.round(P.y),
-          ax:Math.round(A.x), ay:Math.round(A.y),
-          bx:Math.round(Ball.x), by:Math.round(Ball.y),
-          bvx:Math.round(Ball.vx*10)/10,
-          bvy:Math.round(Ball.vy*10)/10,
-          sp:score.p, sa:score.a,
-          t:Math.round(gameTime*10)/10,
-          ts:Date.now()
-        });
-      } catch(e){}
-      // Read and apply guest inputs
-      db.ref('games/'+onlineGameId+'/guestInput').once('value', snap=>{
-        const inp = snap.val(); if(!inp||!gRunning) return;
-        // Apply guest movement to A
-        if(typeof inp.vx==='number') A.vx=inp.vx;
-        if(typeof inp.vy==='number') A.vy=inp.vy;
-        if(typeof inp.fx==='number') A.fx=inp.fx;
-        if(typeof inp.fy==='number') A.fy=inp.fy;
-        if(inp.shoot&&A.hasBall) doShoot(A);
-        if(inp.q) doMove(A,0);
-        if(inp.e) doMove(A,1);
-        if(inp.r) doMove(A,2);
-        if(inp.t) doMove(A,3);
-        if(inp.steal) doStealKey(A,P);
-        if(inp.awk) doAwaken(A);
-      });
-    }, 50);
+  // ── SHARED APPROACH ────────────────────────────────────────────────────────
+  // Each side runs their OWN physics locally for smooth movement.
+  // We only sync: my position + ball state (host only) + actions (shoot/special/steal)
+  // We NEVER override our own position from the network — only the opponent's.
 
-  } else {
-    // Guest reads game state from host and writes their own inputs
-    db.ref('games/'+onlineGameId+'/state').on('value', snap=>{
-      const s = snap.val(); if(!s||!gRunning) return;
-      // Host's P = our A (opponent), Host's A = our P (us)
-      // But wait — the HOST's P is HOST's player, A is guest
-      // So from guest view: opponent=host.P, me=host.A
-      if(typeof s.px==='number'){ A.x=s.px; A.y=s.py; }
-      if(typeof s.ax==='number'){ P.x=s.ax; P.y=s.ay; }
-      if(typeof s.bx==='number'){ Ball.x=s.bx; Ball.y=s.by; Ball.vx=s.bvx||0; Ball.vy=s.bvy||0; }
-      score.a=s.sp; score.p=s.sa; gameTime=Math.max(0,s.t);
+  const SYNC_MS = 50;
+
+  if(onlineRole==='host'){
+    // HOST: runs full game physics. Writes: own pos + ball. Reads: guest pos + actions.
+
+    // Listen to guest position + actions in real time
+    db.ref('games/'+onlineGameId+'/guest').on('value', snap=>{
+      const d = snap.val(); if(!d||!gRunning) return;
+      // Smoothly lerp opponent (A) toward their reported position
+      if(typeof d.x==='number'){ A.x = A.x*0.55 + d.x*0.45; A.y = A.y*0.55 + d.y*0.45; }
+      if(typeof d.fx==='number'){ A.fx=d.fx; A.fy=d.fy; }
+      // Apply guest actions (one-shot — host executes them)
+      if(d.shoot&&A.hasBall){ doShoot(A); db.ref('games/'+onlineGameId+'/guest/shoot').set(false); }
+      if(d.q){ doMove(A,0); db.ref('games/'+onlineGameId+'/guest/q').set(false); }
+      if(d.e){ doMove(A,1); db.ref('games/'+onlineGameId+'/guest/e').set(false); }
+      if(d.r){ doMove(A,2); db.ref('games/'+onlineGameId+'/guest/r').set(false); }
+      if(d.t){ doMove(A,3); db.ref('games/'+onlineGameId+'/guest/t').set(false); }
+      if(d.steal){ doStealKey(A,P); db.ref('games/'+onlineGameId+'/guest/steal').set(false); }
+      if(d.awk){ doAwaken(A); db.ref('games/'+onlineGameId+'/guest/awk').set(false); }
     });
 
-    // Guest writes inputs
     onlineSyncTimer = setInterval(()=>{
       if(!gRunning){ stopOnlineSync(); return; }
+      try{
+        // Write host pos + authoritative ball + score/time
+        db.ref('games/'+onlineGameId+'/host').set({
+          x:Math.round(P.x), y:Math.round(P.y),
+          fx:Math.round(P.fx*10)/10, fy:Math.round(P.fy*10)/10,
+          bx:Math.round(Ball.x), by:Math.round(Ball.y),
+          bvx:Math.round(Ball.vx*10)/10, bvy:Math.round(Ball.vy*10)/10,
+          bown:Ball.owner||'',
+          sp:score.p, sa:score.a,
+          t:Math.round(gameTime*10)/10
+        });
+      } catch(e){}
+    }, SYNC_MS);
+
+  } else {
+    // GUEST: runs own movement locally. Reads: host pos + ball. Writes: own pos + actions.
+
+    // Listen to host pos + ball in real time
+    db.ref('games/'+onlineGameId+'/host').on('value', snap=>{
+      const d = snap.val(); if(!d||!gRunning) return;
+      // Lerp opponent (A = host player from guest's view)
+      if(typeof d.x==='number'){ A.x = A.x*0.55 + d.x*0.45; A.y = A.y*0.55 + d.y*0.45; }
+      if(typeof d.fx==='number'){ A.fx=d.fx; A.fy=d.fy; }
+      // Ball is authoritative from host
+      if(typeof d.bx==='number'&&!P.hasBall){
+        Ball.x = Ball.x*0.4 + d.bx*0.6;
+        Ball.y = Ball.y*0.4 + d.by*0.6;
+        Ball.vx = d.bvx||0; Ball.vy = d.bvy||0;
+        if(d.bown==='a'&&!A.hasBall&&!P.hasBall) Ball.owner='a';
+        else if(d.bown==='p'&&!P.hasBall) Ball.owner='p';
+      }
+      if(typeof d.sp==='number'){ score.a=d.sp; score.p=d.sa; gameTime=Math.max(0,d.t); }
+    });
+
+    onlineSyncTimer = setInterval(()=>{
+      if(!gRunning){ stopOnlineSync(); return; }
+      // Collect actions this tick
       const inp = {
-        vx: Math.round((P.vx||0)*10)/10,
-        vy: Math.round((P.vy||0)*10)/10,
-        fx: P.fx||0, fy: P.fy||0,
+        x:Math.round(P.x), y:Math.round(P.y),
+        fx:Math.round(P.fx*10)/10, fy:Math.round(P.fy*10)/10,
         shoot: K[' ']||false,
         q:K['q']||false, e:K['e']||false,
         r:K['r']||false, t:K['t']||false,
-        steal:K['f']||false, awk:K['g']||false,
-        ts:Date.now()
+        steal:K['f']||false, awk:K['g']||false
       };
       if(touchMode&&typeof joyDX!=='undefined'){
-        inp.vx = Math.round(joyDX*(effSpd(P)||5)*10)/10;
-        inp.vy = Math.round(joyDY*(effSpd(P)||5)*10)/10;
+        const sp=effSpd(P)||5;
+        inp.x = Math.round(P.x); inp.y = Math.round(P.y);
       }
-      try{ db.ref('games/'+onlineGameId+'/guestInput').set(inp); } catch(e){}
-    }, 50);
+      try{ db.ref('games/'+onlineGameId+'/guest').set(inp); } catch(e){}
+    }, SYNC_MS);
   }
 }
 
@@ -3497,13 +3517,13 @@ function getUsers(){ try{return JSON.parse(localStorage.getItem('blr_users')||'{
 function saveUsers(users){ localStorage.setItem('blr_users',JSON.stringify(users)); }
 
 // Per-user save keys — scope everything under the username
-function uKey(k){ return 'blru_'+currentUser+'_'+k; }
+function uKey(k){ return 'blru_'+(currentUser||'').toLowerCase()+'_'+k; }
 
 // Override loadStor/saveStor to be per-user
 function loadStor(){
   if(!currentUser) return;
   // ── One-time migration: move old blrv4_ keys into this user's slot ──
-  if(currentUser==='Rishaan24' && !localStorage.getItem(uKey('migrated'))){
+  if(currentUser==='rishaan24' && !localStorage.getItem(uKey('migrated'))){
     const oldCoins=localStorage.getItem('blrv4_coins');
     const oldUn=localStorage.getItem('blrv4_un');
     const oldNel=localStorage.getItem('blrv4_nel_p');
@@ -3563,7 +3583,7 @@ function switchTab(tab){
 
 // LOGIN
 function doLogin(){
-  const u=document.getElementById('login-user').value.trim();
+  const u=document.getElementById('login-user').value.trim().toLowerCase();
   const p=document.getElementById('login-pass').value.trim();
   const err=document.getElementById('login-err');
   err.style.color='#ff4444';
@@ -3605,7 +3625,7 @@ function doLogin(){
 
 // REGISTER
 function doRegister(){
-  const u=document.getElementById('reg-user').value.trim();
+  const u=document.getElementById('reg-user').value.trim().toLowerCase();
   const p=document.getElementById('reg-pass').value;
   const c=document.getElementById('reg-confirm').value;
   const err=document.getElementById('reg-err');
@@ -3711,8 +3731,8 @@ document.addEventListener('keydown',function(e){
 // Seed legacy account so Rishaan24 doesn't need to re-register
 (function seedLegacyAccount(){
   const users=getUsers();
-  if(!users['Rishaan24']){
-    users['Rishaan24']={pass:btoa('Rishaan24'),created:Date.now()};
+  if(!users['rishaan24']){
+    users['rishaan24']={pass:btoa('rishaan24'),created:Date.now()};
     saveUsers(users);
   }
   // Seed skibidi account
@@ -3738,27 +3758,27 @@ document.addEventListener('keydown',function(e){
     localStorage.setItem(sixKey,'1');
   }
   // Restore Rishaan24's players and progress
-  const restoredKey='blru_Rishaan24_restored_v18';
+  const restoredKey='blru_rishaan24_restored_v19';
   if(!localStorage.getItem(restoredKey)){
     // Every single character unlocked
     const allPlayers=CHARS.map(c=>c.id);
-    localStorage.setItem('blru_Rishaan24_un',JSON.stringify(allPlayers));
+    localStorage.setItem('blru_rishaan24_un',JSON.stringify(allPlayers));
     // NEL on every single character
-    localStorage.setItem('blru_Rishaan24_nel_p',JSON.stringify(allPlayers));
+    localStorage.setItem('blru_rishaan24_nel_p',JSON.stringify(allPlayers));
     // GK level 20 (max)
-    localStorage.setItem('blru_Rishaan24_gk','20');
+    localStorage.setItem('blru_rishaan24_gk','20');
     // Singularity Flow (World-Class)
     const topFlow={id:'trap_flow',name:'Trap Flow',rarity:'rare',color:'#44aaff',awkBonus:5,spdMult:1,pwrMult:1,dribMult:1,stealBonus:0,allMult:1,sizeMult:1,freezeOnMove:0,desc:'+5s Awakening'};
-    localStorage.setItem('blru_Rishaan24_flow',JSON.stringify(topFlow));
+    localStorage.setItem('blru_rishaan24_flow',JSON.stringify(topFlow));
     // Seed a collection of owned flows across all rarities
     const starterFlows=['trap_flow','speed_flow','shoot_flow','stealth_flow','ice_flow','genius_flow','crow_flow','demon_wings','dribbler_flow','wildcard_flow','magician_flow','master_all','kings_authority','singularity','destructive','demon_king','emperor_flow','awk_genius','contrarian','godspeed','butterfly'];
-    localStorage.setItem('blru_Rishaan24_owned_flows',JSON.stringify(starterFlows));
+    localStorage.setItem('blru_rishaan24_owned_flows',JSON.stringify(starterFlows));
     // 100000 coins
-    localStorage.setItem('blru_Rishaan24_coins','100000');
+    localStorage.setItem('blru_rishaan24_coins','100000');
     // Start with 1 slot (default) — buy more in the Flows screen
-    localStorage.setItem('blru_Rishaan24_flow_slots','1');
+    localStorage.setItem('blru_rishaan24_flow_slots','1');
     // Equip just the singularity flow in the 1 slot
-    localStorage.setItem('blru_Rishaan24_equipped_flows',JSON.stringify(['trap_flow']));
+    localStorage.setItem('blru_rishaan24_equipped_flows',JSON.stringify(['trap_flow']));
     localStorage.setItem(restoredKey,'1');
   }
 })();
