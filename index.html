@@ -1877,9 +1877,12 @@ function updateEnt(ent,dt){
     ent.vx=ent.side*sp; ent.vy=(CY+Math.sin(ent.zigPhase)*65-ent.y)*0.18;
     ent.fx=ent.side; ent.fy=ent.vy>0?0.5:-0.5;
     ent.trail.push({x:ent.x,y:ent.y,life:18,col:ent.style.color});
-  } else if(ent.isP1||(curMode==='friend'&&!ent.isP1)){
+  } else if(ent.isP1||(curMode==='friend'&&!ent.isP1)||onlineRole==='host'){
     let mx=0,my=0;
-    if(ent.isP1){
+    // Online host — use injected net movement for A (guest's player)
+    const netMove = getNetMove(ent);
+    if(netMove){ mx=netMove.mx; my=netMove.my; }
+    else if(ent.isP1){
       if(touchMode){ const t=getTouchInput(); mx=t.mx; my=t.my; }
       else { if(K['arrowup'])my=-1;if(K['arrowdown'])my=1;if(K['arrowleft'])mx=-1;if(K['arrowright'])mx=1; }
     }
@@ -2720,6 +2723,7 @@ function shakeGame(){ const e=document.getElementById('s-game');e.classList.add(
 function endGame(){
   gRunning=false;
   showTouchHUD(false);
+  if(onlineGameId) stopOnlineSync();
   const {p,a}=score; const earned=p>a?70:p===a?15:0;
   addCoins(earned);
   showS('s-go');
@@ -3221,112 +3225,234 @@ async function confirmOnlineGuestChar(){
 }
 
 // Step 4: Both sides launch the game
+// ══════════════════════════════════════════════════════════════════════════════
+// ONLINE MULTIPLAYER — HOST-AUTHORITATIVE ARCHITECTURE
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// HOST:  Runs ALL physics (P, A, Ball, GKs, score, time).
+//        Reads guest INPUTS each tick, applies them to A entity.
+//        Writes full game state to Firebase every tick.
+//
+// GUEST: Runs NO local physics. Reads everything from Firebase.
+//        Only writes raw inputs (keys/joystick) to Firebase.
+//        Sees a real-time mirror of what host is computing.
+//
+// This guarantees perfect sync — one simulation, two views.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Stored guest inputs that host reads each physics frame
+let _guestInputCache = {};
+
 function launchOnlineGame(gameId, myChar, oppChar, role){
   onlineGameId = gameId;
   onlineRole = role;
   gameMode = 'online_'+role;
-  showDailyToast(role==='host'?'⚽ GAME STARTING — you are HOST':'⚽ GAME STARTING — you are GUEST', false);
-  // Host plays left side (P), guest plays right side (A)
-  // In initGame, P is always left, A is right
-  // Host char = P, Guest char = A
+  _guestInputCache = {};
+  showDailyToast(role==='host'?'⚽ HOST — Game starting!':'⚽ GUEST — Joining...', false);
   setTimeout(()=>{
     initGame(myChar, oppChar);
-    setTimeout(startOnlineSync, 500);
-  }, 1000);
+    // Patch the game loop based on role
+    if(role==='host') patchUpdateForOnlineHost();
+    else patchUpdateForOnlineGuest();
+  }, 800);
 }
 
-// Step 5: Bidirectional sync
-function startOnlineSync(){
-  if(!onlineGameId||!gRunning) return;
-  console.log('Online sync starting as', onlineRole);
+// ── HOST PATCHES ──────────────────────────────────────────────────────────────
+// The host patches the update loop to:
+// 1. Read guest inputs from Firebase every frame
+// 2. Apply them to A (guest's player)
+// 3. After each update(), write full game state to Firebase
 
-  // ── SHARED APPROACH ────────────────────────────────────────────────────────
-  // Each side runs their OWN physics locally for smooth movement.
-  // We only sync: my position + ball state (host only) + actions (shoot/special/steal)
-  // We NEVER override our own position from the network — only the opponent's.
+let _origUpdate = null;
+let _stateWriteTimer = null;
 
-  const SYNC_MS = 50;
+function patchUpdateForOnlineHost(){
+  // Listen to guest inputs in real time — cache locally for frame-by-frame use
+  db.ref('games/'+onlineGameId+'/inputs').on('value', snap=>{
+    _guestInputCache = snap.val()||{};
+  });
 
-  if(onlineRole==='host'){
-    // HOST: runs full game physics. Writes: own pos + ball. Reads: guest pos + actions.
+  // Override the global update function to inject guest inputs before physics
+  _origUpdate = window.update;
+  window.update = function(dt){
+    if(!gRunning) return;
 
-    // Listen to guest position + actions in real time
-    db.ref('games/'+onlineGameId+'/guest').on('value', snap=>{
-      const d = snap.val(); if(!d||!gRunning) return;
-      // Smoothly lerp opponent (A) toward their reported position
-      if(typeof d.x==='number'){ A.x = A.x*0.55 + d.x*0.45; A.y = A.y*0.55 + d.y*0.45; }
-      if(typeof d.fx==='number'){ A.fx=d.fx; A.fy=d.fy; }
-      // Apply guest actions (one-shot — host executes them)
-      if(d.shoot&&A.hasBall){ doShoot(A); db.ref('games/'+onlineGameId+'/guest/shoot').set(false); }
-      if(d.q){ doMove(A,0); db.ref('games/'+onlineGameId+'/guest/q').set(false); }
-      if(d.e){ doMove(A,1); db.ref('games/'+onlineGameId+'/guest/e').set(false); }
-      if(d.r){ doMove(A,2); db.ref('games/'+onlineGameId+'/guest/r').set(false); }
-      if(d.t){ doMove(A,3); db.ref('games/'+onlineGameId+'/guest/t').set(false); }
-      if(d.steal){ doStealKey(A,P); db.ref('games/'+onlineGameId+'/guest/steal').set(false); }
-      if(d.awk){ doAwaken(A); db.ref('games/'+onlineGameId+'/guest/awk').set(false); }
-    });
+    // Inject guest inputs into the K (key state) for A's movement
+    const gi = _guestInputCache;
+    // We temporarily set movement for A directly from guest input
+    if(typeof gi.mx==='number') _netMx = gi.mx;
+    if(typeof gi.my==='number') _netMy = gi.my;
+    if(typeof gi.fx==='number'){ A.fx=gi.fx; A.fy=gi.fy||0; }
 
-    onlineSyncTimer = setInterval(()=>{
-      if(!gRunning){ stopOnlineSync(); return; }
-      try{
-        // Write host pos + authoritative ball + score/time
-        db.ref('games/'+onlineGameId+'/host').set({
-          x:Math.round(P.x), y:Math.round(P.y),
-          fx:Math.round(P.fx*10)/10, fy:Math.round(P.fy*10)/10,
-          bx:Math.round(Ball.x), by:Math.round(Ball.y),
-          bvx:Math.round(Ball.vx*10)/10, bvy:Math.round(Ball.vy*10)/10,
-          bown:Ball.owner||'',
-          sp:score.p, sa:score.a,
-          t:Math.round(gameTime*10)/10
-        });
-      } catch(e){}
-    }, SYNC_MS);
+    // Apply guest action inputs
+    if(gi.shoot)  { doShoot(A);       db.ref('games/'+onlineGameId+'/inputs/shoot').set(false); }
+    if(gi.q)      { doMove(A,0);      db.ref('games/'+onlineGameId+'/inputs/q').set(false); }
+    if(gi.e)      { doMove(A,1);      db.ref('games/'+onlineGameId+'/inputs/e').set(false); }
+    if(gi.r)      { doMove(A,2);      db.ref('games/'+onlineGameId+'/inputs/r').set(false); }
+    if(gi.t)      { doMove(A,3);      db.ref('games/'+onlineGameId+'/inputs/t').set(false); }
+    if(gi.steal)  { doStealKey(A,P);  db.ref('games/'+onlineGameId+'/inputs/steal').set(false); }
+    if(gi.awk)    { doAwaken(A);      db.ref('games/'+onlineGameId+'/inputs/awk').set(false); }
 
-  } else {
-    // GUEST: runs own movement locally. Reads: host pos + ball. Writes: own pos + actions.
+    // Run normal physics (uses _netMx/_netMy for A's movement — see updateEnt patch)
+    _origUpdate(dt);
 
-    // Listen to host pos + ball in real time
-    db.ref('games/'+onlineGameId+'/host').on('value', snap=>{
-      const d = snap.val(); if(!d||!gRunning) return;
-      // Lerp opponent (A = host player from guest's view)
-      if(typeof d.x==='number'){ A.x = A.x*0.55 + d.x*0.45; A.y = A.y*0.55 + d.y*0.45; }
-      if(typeof d.fx==='number'){ A.fx=d.fx; A.fy=d.fy; }
-      // Ball is authoritative from host
-      if(typeof d.bx==='number'&&!P.hasBall){
-        Ball.x = Ball.x*0.4 + d.bx*0.6;
-        Ball.y = Ball.y*0.4 + d.by*0.6;
-        Ball.vx = d.bvx||0; Ball.vy = d.bvy||0;
-        if(d.bown==='a'&&!A.hasBall&&!P.hasBall) Ball.owner='a';
-        else if(d.bown==='p'&&!P.hasBall) Ball.owner='p';
-      }
-      if(typeof d.sp==='number'){ score.a=d.sp; score.p=d.sa; gameTime=Math.max(0,d.t); }
-    });
+    // Reset net movement
+    _netMx=0; _netMy=0;
+  };
 
-    onlineSyncTimer = setInterval(()=>{
-      if(!gRunning){ stopOnlineSync(); return; }
-      // Collect actions this tick
-      const inp = {
-        x:Math.round(P.x), y:Math.round(P.y),
-        fx:Math.round(P.fx*10)/10, fy:Math.round(P.fy*10)/10,
+  // Write full game state to Firebase every 50ms (20fps sync)
+  _stateWriteTimer = setInterval(()=>{
+    if(!gRunning||!onlineGameId) return;
+    try{
+      db.ref('games/'+onlineGameId+'/state').set({
+        // Host player (P)
+        px:Math.round(P.x), py:Math.round(P.y),
+        pfx:Math.round(P.fx*10)/10, pfy:Math.round(P.fy*10)/10,
+        phb:P.hasBall?1:0,
+        // Guest player (A)
+        ax:Math.round(A.x), ay:Math.round(A.y),
+        afx:Math.round(A.fx*10)/10, afy:Math.round(A.fy*10)/10,
+        ahb:A.hasBall?1:0,
+        // Ball
+        bx:Math.round(Ball.x*10)/10, by:Math.round(Ball.y*10)/10,
+        bvx:Math.round(Ball.vx*10)/10, bvy:Math.round(Ball.vy*10)/10,
+        bo:Ball.owner||'',
+        // Game state
+        sp:score.p, sa:score.a,
+        t:Math.round(gameTime*10)/10,
+        ts:Date.now()
+      });
+    } catch(e){}
+  }, 50);
+}
+
+// Temporary net movement vars used when host drives A from guest input
+let _netMx=0, _netMy=0;
+// updateEnt reads _netMx/_netMy for A when in online host mode
+function getNetMove(ent){
+  if(onlineRole==='host' && ent===A) return {mx:_netMx, my:_netMy};
+  return null;
+}
+
+// ── GUEST PATCHES ─────────────────────────────────────────────────────────────
+// Guest disables local physics updates entirely.
+// Reads authoritative state from Firebase and renders it.
+// Writes only raw inputs every 50ms.
+
+let _guestStateUnsub = null;
+let _guestInputTimer = null;
+
+function patchUpdateForOnlineGuest(){
+  // Disable local game physics — guest is just a renderer
+  gRunning = true; // keep render loop alive
+  _origUpdate = window.update;
+  window.update = function(dt){
+    // Only update timers/particles/HUD — no physics
+    if(notifT>0){notifT-=dt;if(notifT<=0)document.getElementById('hud-notif').classList.remove('show');}
+    if(subT>0){subT-=dt;if(subT<=0)document.getElementById('hud-sub').classList.remove('show');}
+    if(msgT>0){msgT-=dt;if(msgT<=0)document.getElementById('hud-msg').classList.remove('show');}
+    particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.9;p.vy*=0.9;p.life-=dt;return p.life>0;});
+    updateHUD();
+    checkGameEnd();
+  };
+
+  // Listen to full game state from host — apply everything
+  _guestStateUnsub = db.ref('games/'+onlineGameId+'/state').on('value', snap=>{
+    const s = snap.val(); if(!s) return;
+
+    // Guest's character is A on host, but displayed as P on guest screen
+    // From guest POV: P = guest (A on host), A = host (P on host)
+    // So we swap: guest's P gets host's A data, guest's A gets host's P data
+
+    // Guest player (displayed as P locally)
+    if(typeof s.ax==='number'){
+      P.x=s.ax; P.y=s.ay;
+      P.fx=s.afx||0; P.fy=s.afy||0;
+      P.hasBall=s.ahb===1;
+    }
+    // Host player (displayed as A/opponent locally)
+    if(typeof s.px==='number'){
+      A.x=s.px; A.y=s.py;
+      A.fx=s.pfx||0; A.fy=s.pfy||0;
+      A.hasBall=s.phb===1;
+    }
+    // Ball — direct from host
+    if(typeof s.bx==='number'){
+      Ball.x=s.bx; Ball.y=s.by;
+      Ball.vx=s.bvx||0; Ball.vy=s.bvy||0;
+      Ball.owner=s.bo||null;
+    }
+    // Score and time — direct from host
+    if(typeof s.sp==='number'){
+      // Guest is A on host, host is P on host
+      // From guest screen: score.p = guest goals (sa on host), score.a = host goals (sp on host)
+      score.p=s.sa; score.a=s.sp;
+      document.getElementById('hsc-p').textContent=score.p;
+      document.getElementById('hsc-a').textContent=score.a;
+      gameTime=Math.max(0,s.t);
+    }
+  });
+
+  // Write guest inputs every 50ms
+  _guestInputTimer = setInterval(()=>{
+    if(!onlineGameId) return;
+    let mx=0, my=0;
+    // Keyboard
+    if(K['arrowleft']) mx=-1; if(K['arrowright']) mx=1;
+    if(K['arrowup'])   my=-1; if(K['arrowdown'])  my=1;
+    // Joystick
+    if(touchMode&&joyActive){
+      const DEAD=0.18;
+      mx=Math.abs(joyDX)>DEAD?joyDX:0;
+      my=Math.abs(joyDY)>DEAD?joyDY:0;
+    }
+    // Normalise
+    const ml=Math.sqrt(mx*mx+my*my)||1;
+    if(mx||my){ mx/=ml; my/=ml; }
+    // Direction facing
+    if(mx||my){ P.fx=mx; P.fy=my; }
+
+    try{
+      db.ref('games/'+onlineGameId+'/inputs').set({
+        mx:Math.round(mx*100)/100,
+        my:Math.round(my*100)/100,
+        fx:Math.round(P.fx*10)/10,
+        fy:Math.round(P.fy*10)/10,
         shoot: K[' ']||false,
         q:K['q']||false, e:K['e']||false,
         r:K['r']||false, t:K['t']||false,
         steal:K['f']||false, awk:K['g']||false
-      };
-      if(touchMode&&typeof joyDX!=='undefined'){
-        const sp=effSpd(P)||5;
-        inp.x = Math.round(P.x); inp.y = Math.round(P.y);
-      }
-      try{ db.ref('games/'+onlineGameId+'/guest').set(inp); } catch(e){}
-    }, SYNC_MS);
+      });
+    } catch(e){}
+  }, 50);
+}
+
+function checkGameEnd(){
+  if(gameTime<=0&&gRunning){
+    if(onlineRole==='guest'){
+      // Guest just shows result — host triggers endGame
+      db.ref('games/'+onlineGameId+'/state/t').once('value',snap=>{
+        if(snap.val()<=0) endGame();
+      });
+    }
   }
 }
 
 function stopOnlineSync(){
-  if(onlineSyncTimer){ clearInterval(onlineSyncTimer); onlineSyncTimer=null; }
-  try{
-    if(onlineGameId && onlineRole==='host') db.ref('games/'+onlineGameId).remove();
-  } catch(e){}
+  // Restore original update
+  if(_origUpdate){ window.update=_origUpdate; _origUpdate=null; }
+  // Clear timers/listeners
+  if(_stateWriteTimer){ clearInterval(_stateWriteTimer); _stateWriteTimer=null; }
+  if(_guestInputTimer){ clearInterval(_guestInputTimer); _guestInputTimer=null; }
+  if(_guestStateUnsub && onlineGameId){
+    db.ref('games/'+onlineGameId+'/state').off('value', _guestStateUnsub);
+    _guestStateUnsub=null;
+  }
+  if(onlineGameId){
+    db.ref('games/'+onlineGameId+'/inputs').off();
+    if(onlineRole==='host') db.ref('games/'+onlineGameId).remove();
+  }
+  _guestInputCache={};
   onlineGameId=null; onlineRole=null;
 }
 
